@@ -22,6 +22,19 @@ CREATE TABLE IF NOT EXISTS stickers (
 
 CREATE INDEX IF NOT EXISTS idx_stickers_code ON stickers (code);
 
+-- Mensajes de chat entre usuarios (para coordinar trueques).
+CREATE TABLE IF NOT EXISTS messages (
+  id           SERIAL PRIMARY KEY,
+  sender_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  recipient_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body         TEXT NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  read_at      TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_messages_pair ON messages (sender_id, recipient_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_messages_unread ON messages (recipient_id, read_at);
+
 -- Definición global del álbum (secciones con prefijo + rango de números).
 CREATE TABLE IF NOT EXISTS album_sections (
   id         SERIAL PRIMARY KEY,

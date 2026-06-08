@@ -7,6 +7,9 @@ import { api, isLoggedIn, setToken, getApiBase, setApiBase } from './api.js';
 let state = store.load();      // { album, owned } — fuente local (modo invitado / caché)
 let currentUser = null;        // datos del usuario con sesión
 let pendingLoc = { lat: null, lng: null }; // ubicación capturada por GPS, pendiente de guardar
+let currentChat = null;        // { id, username, city } de la conversación abierta
+let lastMsgId = 0;             // último id de mensaje renderizado (para refrescos)
+let chatPollTimer = null;      // intervalo de sondeo del chat
 
 const $ = (id) => document.getElementById(id);
 const loggedIn = () => isLoggedIn();
@@ -41,19 +44,20 @@ const data = {
 };
 
 // ---------- Navegación por pestañas ----------
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.tab-panel').forEach((p) => { p.hidden = p.id !== `tab-${tab}`; });
+  if (tab === 'lists') renderLists();
+  if (tab === 'account') renderAlbumEditor();
+  if (tab === 'chat') renderChatView();
+  if (tab !== 'scan' && camera.isActive()) {
+    camera.stop($('video'));
+    showCameraControls(false);
+  }
+}
 function setupTabs() {
   document.querySelectorAll('.tab-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const tab = btn.dataset.tab;
-      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
-      document.querySelectorAll('.tab-panel').forEach((p) => { p.hidden = p.id !== `tab-${tab}`; });
-      if (tab === 'lists') renderLists();
-      if (tab === 'account') renderAlbumEditor();
-      if (tab !== 'scan' && camera.isActive()) {
-        camera.stop($('video'));
-        showCameraControls(false);
-      }
-    });
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
   });
 }
 
@@ -293,6 +297,9 @@ function setupAuth() {
   $('logoutBtn').addEventListener('click', () => {
     setToken(null);
     currentUser = null;
+    currentChat = null;
+    stopChatPolling();
+    setBadge(0);
     state = store.load(); // vuelve al modo invitado local
     renderAuthState();
     renderStats();
@@ -312,6 +319,8 @@ async function onAuthSuccess(r) {
   await loadFromServer();
   renderAuthState();
   renderStats();
+  startChatPolling();
+  updateUnreadBadge();
 }
 
 function setAuthFeedback(msg, cls = '') {
@@ -332,6 +341,7 @@ function renderAuthState() {
   $('profileSection').hidden = !on;
   $('tradeLoggedIn').hidden = !on;
   $('tradeLoggedOut').hidden = on;
+  renderChatView();
   if (on && currentUser) {
     $('sessionLine').textContent = `Sesión: ${currentUser.username}`;
     $('profileGreeting').textContent = `Hola, ${currentUser.username} 👋`;
@@ -501,10 +511,171 @@ function renderPartner(p) {
     ${p.theyGive.length ? `<p class="trade-line get">⬇️ Te puede dar (${p.theyGive.length}):</p><div class="chips">${chipsHtml(p.theyGive)}</div>` : ''}
     ${p.iGive.length ? `<p class="trade-line give">⬆️ Tú le puedes dar (${p.iGive.length}):</p><div class="chips">${chipsHtml(p.iGive)}</div>` : ''}
   `;
+  const btn = document.createElement('button');
+  btn.className = 'btn btn-chat';
+  btn.textContent = '💬 Chatear';
+  btn.addEventListener('click', () => openConversation(p.id, p.username, p.city));
+  el.appendChild(btn);
   return el;
 }
 function chipsHtml(codes) {
   return codes.map((c) => `<span class="chip">${escapeHtml(c)}</span>`).join('');
+}
+
+// ---------- Chat ----------
+function setupChat() {
+  $('chatBackBtn').addEventListener('click', () => {
+    currentChat = null;
+    renderChatView();
+    renderConversations();
+  });
+  $('chatForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const input = $('chatInput');
+    const body = input.value.trim();
+    if (!body || !currentChat) return;
+    input.value = '';
+    try {
+      const { message } = await api.sendMessage(currentChat.id, body);
+      appendMessage(message);
+    } catch (err) {
+      input.value = body;
+      alert('No se pudo enviar: ' + err.message);
+    }
+  });
+}
+
+// Decide qué vista del chat mostrar según sesión y conversación abierta.
+function renderChatView() {
+  const on = loggedIn();
+  $('chatLoggedOut').hidden = on;
+  $('chatList').hidden = !on || !!currentChat;
+  $('chatConversation').hidden = !on || !currentChat;
+  if (on && !currentChat) renderConversations();
+  if (on && currentChat) {
+    $('chatPeerName').textContent = currentChat.username;
+    $('chatPeerMeta').textContent = currentChat.city || '';
+  }
+}
+
+async function renderConversations() {
+  if (!loggedIn()) return;
+  let convos = [];
+  try { ({ conversations: convos } = await api.conversations()); }
+  catch (e) { return; }
+  const list = $('conversationsList');
+  list.innerHTML = '';
+  $('noConversations').hidden = convos.length > 0;
+  convos.forEach((c) => {
+    const el = document.createElement('div');
+    el.className = 'convo';
+    const initial = (c.username || '?').charAt(0).toUpperCase();
+    const mine = c.last_sender === (currentUser && currentUser.id);
+    const preview = (mine ? 'Tú: ' : '') + (c.last_body || '');
+    el.innerHTML = `
+      <div class="convo-avatar">${escapeHtml(initial)}</div>
+      <div class="convo-body">
+        <div class="convo-top">
+          <span class="convo-name">${escapeHtml(c.username)}</span>
+          <span class="convo-time">${formatTime(c.last_at)}</span>
+        </div>
+        <div class="convo-last">${escapeHtml(preview)}</div>
+      </div>
+      ${c.unread > 0 ? `<span class="convo-unread">${c.unread}</span>` : ''}`;
+    el.addEventListener('click', () => openConversation(c.id, c.username, c.city));
+    list.appendChild(el);
+  });
+}
+
+async function openConversation(userId, username, city) {
+  if (!loggedIn()) { switchTab('account'); return; }
+  currentChat = { id: userId, username, city };
+  lastMsgId = 0;
+  switchTab('chat');
+  renderChatView();
+  $('chatMessages').innerHTML = '<p class="chat-empty-msg">Cargando…</p>';
+  try {
+    const { user, messages } = await api.messagesWith(userId);
+    currentChat = { id: user.id, username: user.username, city: user.city };
+    renderChatView();
+    renderMessages(messages);
+    updateUnreadBadge();
+  } catch (e) {
+    $('chatMessages').innerHTML = `<p class="chat-empty-msg">⚠️ ${escapeHtml(e.message)}</p>`;
+  }
+}
+
+function renderMessages(messages) {
+  const box = $('chatMessages');
+  box.innerHTML = '';
+  if (!messages.length) {
+    box.innerHTML = '<p class="chat-empty-msg">Aún no hay mensajes. ¡Saluda y propón tu trueque! 👋</p>';
+    return;
+  }
+  messages.forEach((m) => box.appendChild(bubble(m)));
+  lastMsgId = messages[messages.length - 1].id;
+  box.scrollTop = box.scrollHeight;
+}
+
+function appendMessage(m) {
+  const box = $('chatMessages');
+  const empty = box.querySelector('.chat-empty-msg');
+  if (empty) box.innerHTML = '';
+  box.appendChild(bubble(m));
+  lastMsgId = Math.max(lastMsgId, m.id);
+  box.scrollTop = box.scrollHeight;
+}
+
+function bubble(m) {
+  const mine = currentUser && m.sender_id === currentUser.id;
+  const el = document.createElement('div');
+  el.className = 'bubble ' + (mine ? 'mine' : 'theirs');
+  el.innerHTML = `${escapeHtml(m.body)}<span class="bubble-time">${formatTime(m.created_at)}</span>`;
+  return el;
+}
+
+function formatTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  return sameDay
+    ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleDateString([], { day: '2-digit', month: '2-digit' });
+}
+
+async function updateUnreadBadge() {
+  if (!loggedIn()) { setBadge(0); return; }
+  try { const { count } = await api.unreadCount(); setBadge(count); }
+  catch (e) { /* ignorar */ }
+}
+function setBadge(n) {
+  const b = $('chatBadge');
+  b.textContent = n;
+  b.hidden = !n;
+}
+
+function startChatPolling() {
+  stopChatPolling();
+  chatPollTimer = setInterval(chatTick, 5000);
+}
+function stopChatPolling() {
+  if (chatPollTimer) { clearInterval(chatPollTimer); chatPollTimer = null; }
+}
+async function chatTick() {
+  if (!loggedIn()) { stopChatPolling(); return; }
+  updateUnreadBadge();
+  const chatVisible = !$('tab-chat').hidden;
+  if (!chatVisible) return;
+  if (currentChat) {
+    try {
+      const { messages } = await api.messagesWith(currentChat.id);
+      const last = messages.length ? messages[messages.length - 1].id : 0;
+      if (last !== lastMsgId) renderMessages(messages);
+    } catch (e) { /* ignorar */ }
+  } else {
+    renderConversations();
+  }
 }
 
 // ---------- Utilidades ----------
@@ -526,10 +697,14 @@ async function init() {
   setupAlbum();
   setupData();
   setupTrade();
+  setupChat();
 
   if (loggedIn()) {
-    try { await loadFromServer(); }
-    catch (e) {
+    try {
+      await loadFromServer();
+      startChatPolling();
+      updateUnreadBadge();
+    } catch (e) {
       // Si el servidor no responde, seguimos en modo local con lo que haya.
       console.warn('No se pudo cargar del servidor:', e.message);
       setAuthFeedback('No se pudo conectar al servidor; usando datos locales.', 'warn');

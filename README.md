@@ -77,6 +77,10 @@ abre la app, ve a **Cuenta → Servidor** y escribe la URL del backend
 | POST   | `/api/collection/remove` | ✓    | −1 a una lámina                          |
 | POST   | `/api/collection/set`    | ✓    | Fijar cantidad exacta (0 = eliminar)     |
 | GET    | `/api/trades`            | ✓    | Trueques posibles, ordenados por cercanía|
+| GET    | `/api/messages/conversations` | ✓ | Lista de chats (último mensaje + no leídos) |
+| GET    | `/api/messages/unread-count`  | ✓ | Total de mensajes sin leer (badge)      |
+| GET    | `/api/messages/with/:userId`  | ✓ | Conversación con un usuario (marca leídos)|
+| POST   | `/api/messages/with/:userId`  | ✓ | Enviar un mensaje a un usuario          |
 
 ### Cómo se calcula el trueque
 Para tu usuario, el backend cruza tu colección con la de los demás:
@@ -91,8 +95,11 @@ sobre las coordenadas) y por número de coincidencias.
 1. **📷 Escanear** — Activas la cámara, encuadras el número en el recuadro y tocas
    *Escanear*. Confirmas/corriges el número y lo agregas. Hay carga manual también.
 2. **📋 Listas** — *Repetidas*, *Faltantes* (con buscador) y *Tengo*; compartir/copiar.
-3. **🤝 Trueque** — *Buscar trueques cerca* (requiere sesión).
-4. **👤 Cuenta** — Crear cuenta / iniciar sesión, guardar ubicación (GPS o ciudad),
+3. **🤝 Trueque** — *Buscar trueques cerca* (requiere sesión). Cada coincidencia
+   tiene un botón **💬 Chatear** para escribirle a esa persona.
+4. **💬 Chat** — Conversaciones con otras personas para coordinar el trueque. Los
+   mensajes nuevos se reciben por sondeo (cada 5 s) y hay un contador de no leídos.
+5. **👤 Cuenta** — Crear cuenta / iniciar sesión, guardar ubicación (GPS o ciudad),
    configurar el álbum y exportar/importar tus datos locales.
 
 ## Estructura
@@ -109,7 +116,7 @@ server/                      Backend
   src/index.js               App Express (API + estáticos)
   src/db.js, src/migrate.js  Conexión y migración a PostgreSQL
   src/auth.js                JWT
-  src/routes/                auth, me, album, collection, trades
+  src/routes/                auth, me, album, collection, trades, messages
   db/schema.sql              Esquema + semilla del set 2026
 ```
 

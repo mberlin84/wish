@@ -9,6 +9,7 @@ import meRoutes from './routes/me.js';
 import albumRoutes from './routes/album.js';
 import collectionRoutes from './routes/collection.js';
 import tradeRoutes from './routes/trades.js';
+import messageRoutes from './routes/messages.js';
 
 dotenv.config();
 
@@ -24,6 +25,7 @@ app.use('/api/me', meRoutes);
 app.use('/api/album', albumRoutes);
 app.use('/api/collection', collectionRoutes);
 app.use('/api/trades', tradeRoutes);
+app.use('/api/messages', messageRoutes);
 
 // Sirve la PWA (la raíz del proyecto está dos niveles arriba: server/src -> server -> raíz).
 // dotfiles 'deny' bloquea (403) el acceso a .git y otros archivos ocultos.

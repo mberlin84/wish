@@ -100,6 +100,36 @@
       </div>
     </div>
 
+    <!-- ====== CHAT ====== -->
+    <div class="tab-panel" id="tab-chat" hidden>
+      <div class="card" id="chatLoggedOut" hidden>
+        <h2>💬 Chat</h2>
+        <p class="hint">Inicia sesión para chatear con otras personas y coordinar tus trueques.</p>
+      </div>
+
+      <!-- Lista de conversaciones -->
+      <div id="chatList" hidden>
+        <div id="conversationsList"></div>
+        <p class="trade-empty" id="noConversations" hidden>Aún no tienes conversaciones. Inicia una desde la pestaña <strong>Trueque</strong>.</p>
+      </div>
+
+      <!-- Conversación abierta -->
+      <div id="chatConversation" hidden>
+        <div class="chat-header">
+          <button id="chatBackBtn" class="btn btn-ghost chat-back">←</button>
+          <div>
+            <div class="chat-peer" id="chatPeerName">Usuario</div>
+            <div class="chat-peer-meta" id="chatPeerMeta"></div>
+          </div>
+        </div>
+        <div class="chat-messages" id="chatMessages"></div>
+        <form class="chat-input" id="chatForm">
+          <input type="text" id="chatInput" autocomplete="off" placeholder="Escribe un mensaje…" />
+          <button type="submit" class="btn btn-primary">Enviar</button>
+        </form>
+      </div>
+    </div>
+
     <!-- ====== CUENTA ====== -->
     <div class="tab-panel" id="tab-account" hidden>
       <!-- Sin sesión -->
@@ -186,6 +216,7 @@
     <button class="tab-btn active" data-tab="scan">📷<span>Escanear</span></button>
     <button class="tab-btn" data-tab="lists">📋<span>Listas</span></button>
     <button class="tab-btn" data-tab="trade">🤝<span>Trueque</span></button>
+    <button class="tab-btn" data-tab="chat">💬<span>Chat</span><span class="tab-badge" id="chatBadge" hidden>0</span></button>
     <button class="tab-btn" data-tab="account">👤<span>Cuenta</span></button>
   </nav>
 

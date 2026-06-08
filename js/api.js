@@ -60,4 +60,8 @@ export const api = {
   remove: (code) => req('/collection/remove', { method: 'POST', body: { code } }),
   setCount: (code, count) => req('/collection/set', { method: 'POST', body: { code, count } }),
   trades: () => req('/trades'),
+  conversations: () => req('/messages/conversations'),
+  unreadCount: () => req('/messages/unread-count'),
+  messagesWith: (userId) => req('/messages/with/' + userId),
+  sendMessage: (userId, body) => req('/messages/with/' + userId, { method: 'POST', body: { body } }),
 };
