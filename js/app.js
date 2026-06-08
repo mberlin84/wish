@@ -2,6 +2,7 @@
 import * as store from './store.js';
 import * as camera from './camera.js';
 import * as ocr from './ocr.js';
+import * as stickers from './stickers.js';
 import { api, isLoggedIn, setToken, getApiBase, setApiBase } from './api.js';
 
 let state = store.load();      // { album, owned } — fuente local (modo invitado / caché)
@@ -10,6 +11,7 @@ let pendingLoc = { lat: null, lng: null }; // ubicación capturada por GPS, pend
 let currentChat = null;        // { id, username, city } de la conversación abierta
 let lastMsgId = 0;             // último id de mensaje renderizado (para refrescos)
 let chatPollTimer = null;      // intervalo de sondeo del chat
+let pendingScanThumb = null;   // foto en color recién capturada, pendiente de asociar a un código
 
 const $ = (id) => document.getElementById(id);
 const loggedIn = () => isLoggedIn();
@@ -118,6 +120,11 @@ function setupScan() {
   $('addBtn').addEventListener('click', async () => {
     const result = await addSticker($('codeInput').value);
     showConfirmFeedback(result);
+    // Asocia la foto capturada a este código (la imagen real de la lámina).
+    if (result.status !== 'error' && result.code && pendingScanThumb) {
+      stickers.setPhoto(result.code, pendingScanThumb);
+      pendingScanThumb = null;
+    }
     if (result.status !== 'error') $('codeInput').value = '';
   });
   $('codeInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('addBtn').click(); });
@@ -133,6 +140,8 @@ function setupScan() {
 
 async function onScan() {
   try {
+    // Guarda la foto en color ANTES de que el preprocesado OCR la convierta a B/N.
+    pendingScanThumb = camera.captureColorThumb($('video'));
     camera.captureScanRegion($('video'), $('captureCanvas'));
     setOcrStatus('Leyendo número…');
     $('scanBtn').disabled = true;
@@ -182,50 +191,62 @@ function renderStats() {
 
 // ---------- Pestaña Listas ----------
 let missingFilterValue = '';
+const CARD_BATCH = 120; // cuántos cromos pintar por tanda (el resto, con "Ver más")
+
 function renderLists() {
   const { have, missing, repeated, foreign } = store.computeLists(state);
   $('repeatedCount').textContent = repeated.length;
   $('missingCount').textContent = missing.length;
   $('haveCount').textContent = have.length;
 
-  const repEl = $('repeatedList');
-  repEl.innerHTML = '';
-  if (!repeated.length) repEl.innerHTML = '<span class="chip-empty">Sin repetidas todavía.</span>';
-  else repeated.forEach((r) => {
-    const chip = makeChip(`${r.code}`, 'repeated', () => decrement(r.code));
-    const x = document.createElement('span');
-    x.className = 'x'; x.textContent = `×${r.extra + 1}`;
-    chip.appendChild(x);
-    chip.title = 'Toca para quitar una unidad';
-    repEl.appendChild(chip);
-  });
-  foreign.forEach((f) => repEl.appendChild(makeChip(`${f.code} (fuera del set)`, 'repeated', () => decrement(f.code))));
+  // Repetidas + fuera del set
+  const repItems = [
+    ...repeated.map((r) => ({ code: r.code, count: r.extra + 1, state: 'repeated', onTap: () => decrement(r.code) })),
+    ...foreign.map((f) => ({ code: f.code, count: f.count, state: 'foreign', onTap: () => decrement(f.code) })),
+  ];
+  renderCardGrid($('repeatedList'), repItems, 'Sin repetidas todavía.');
 
-  const missEl = $('missingList');
-  missEl.innerHTML = '';
-  const filtered = missingFilterValue ? missing.filter((c) => c.includes(missingFilterValue.toUpperCase())) : missing;
-  if (!filtered.length) {
-    missEl.innerHTML = '<span class="chip-empty">' +
-      (missing.length ? 'Nada coincide con el filtro.' : '🎉 ¡No te falta ninguna!') + '</span>';
-  } else {
-    filtered.forEach((c) => missEl.appendChild(makeChip(c, '', async () => { await addSticker(c); renderLists(); })));
-  }
+  // Faltantes (con filtro)
+  const filtered = missingFilterValue
+    ? missing.filter((c) => c.includes(missingFilterValue.toUpperCase()))
+    : missing;
+  const missItems = filtered.map((c) => ({
+    code: c, count: 0, state: 'missing',
+    onTap: async () => { await addSticker(c); renderLists(); },
+  }));
+  renderCardGrid($('missingList'), missItems,
+    missing.length ? 'Nada coincide con el filtro.' : '¡No te falta ninguna! Álbum completo.');
 
-  const haveEl = $('haveList');
-  haveEl.innerHTML = '';
-  if (!have.length) haveEl.innerHTML = '<span class="chip-empty">Aún no registras ninguna.</span>';
-  else have.forEach((c) => {
-    const count = state.owned[c];
-    haveEl.appendChild(makeChip(count > 1 ? `${c} ×${count}` : c, 'have', () => decrement(c)));
-  });
+  // Tengo
+  const haveItems = have.map((c) => ({ code: c, count: state.owned[c], state: 'have', onTap: () => decrement(c) }));
+  renderCardGrid($('haveList'), haveItems, 'Aún no registras ninguna.');
 }
 
-function makeChip(label, extraClass, onClick) {
-  const chip = document.createElement('span');
-  chip.className = 'chip' + (extraClass ? ' ' + extraClass : '');
-  chip.textContent = label;
-  if (onClick) chip.addEventListener('click', onClick);
-  return chip;
+// Pinta una grilla de cromos por tandas, con botón "Ver más" para los restantes.
+function renderCardGrid(container, items, emptyMsg) {
+  container.innerHTML = '';
+  if (!items.length) {
+    container.innerHTML = `<span class="chip-empty">${escapeHtml(emptyMsg)}</span>`;
+    return;
+  }
+  let shown = 0;
+  const moreBtn = document.createElement('button');
+  moreBtn.type = 'button';
+  moreBtn.className = 'show-more';
+  const renderBatch = () => {
+    const slice = items.slice(shown, shown + CARD_BATCH);
+    const frag = document.createDocumentFragment();
+    slice.forEach((d) => frag.appendChild(stickers.createStickerCard(d.code, {
+      count: d.count, state: d.state, album: state.album, onTap: d.onTap,
+    })));
+    container.insertBefore(frag, moreBtn);
+    shown += slice.length;
+    if (shown >= items.length) moreBtn.remove();
+    else moreBtn.textContent = `Ver más (${items.length - shown})`;
+  };
+  container.appendChild(moreBtn);
+  moreBtn.addEventListener('click', renderBatch);
+  renderBatch();
 }
 async function decrement(code) {
   await data.remove(code);

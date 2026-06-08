@@ -107,11 +107,28 @@ Para tu usuario, el backend cruza tu colección con la de los demás:
 Se priorizan los **trueques mutuos** y se ordenan por **distancia** (haversine
 sobre las coordenadas) y por número de coincidencias.
 
+## Cómo se representa cada lámina
+
+Cada código se muestra como una **carta de cromo** con el número en grande (estilo
+dorsal). El diseño es legal y no depende de imágenes con derechos de Panini:
+
+- **Foto real (tuya):** al escanear con la cámara se guarda un recorte en color de
+  la lámina (en `localStorage`, aparte de la colección y con tope de tamaño) y se
+  usa como imagen de esa carta. Es tu propia foto, así que no hay problema de
+  derechos.
+- **Bandera automática:** si configuras el álbum por **selecciones** (secciones con
+  prefijo de país, p. ej. `ARG` 1–20, formato real Panini), las cartas muestran la
+  bandera del país (vía [flagcdn.com](https://flagcdn.com)) y el rol de la lámina
+  (escudo / foto de equipo / jugador). Con el set *Base* por defecto (números
+  planos) se muestra la carta diseñada con el número.
+
 ## Uso de la app
 
-1. **📷 Escanear** — Activas la cámara, encuadras el número en el recuadro y tocas
-   *Escanear*. Confirmas/corriges el número y lo agregas. Hay carga manual también.
-2. **📋 Listas** — *Repetidas*, *Faltantes* (con buscador) y *Tengo*; compartir/copiar.
+1. **Escanear** — Activas la cámara, encuadras el número en el recuadro y tocas
+   *Escanear*. Confirmas/corriges el número y lo agregas (se guarda también su foto).
+   Hay carga manual también.
+2. **Listas** — *Repetidas*, *Faltantes* (con buscador) y *Tengo* como grilla de
+   cromos; compartir/copiar.
 3. **🤝 Trueque** — *Buscar trueques cerca* (requiere sesión). Cada coincidencia
    tiene un botón **💬 Chatear** para escribirle a esa persona.
 4. **💬 Chat** — Conversaciones con otras personas para coordinar el trueque. Los

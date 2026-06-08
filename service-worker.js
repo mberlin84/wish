@@ -2,7 +2,7 @@
 // Nota: Tesseract.js y sus modelos se cargan desde CDN y necesitan conexión
 // la primera vez que escaneas; luego el navegador los suele cachear.
 
-const CACHE = 'mis-laminas-v3';
+const CACHE = 'mis-laminas-v4';
 const ASSETS = [
   './',
   './index.html',
@@ -11,6 +11,7 @@ const ASSETS = [
   './js/store.js',
   './js/ocr.js',
   './js/camera.js',
+  './js/stickers.js',
   './js/api.js',
   './manifest.json',
   './icons/icon.svg',

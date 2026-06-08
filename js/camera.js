@@ -27,6 +27,31 @@ export function isActive() {
   return !!stream;
 }
 
+// Captura un recorte EN COLOR del recuadro de escaneo como dataURL (JPEG).
+// Se usa para guardar la "foto real" de la lámina (es la foto del usuario).
+// Se mantiene pequeño (~150px de alto) para no llenar el cupo de localStorage.
+export function captureColorThumb(videoEl) {
+  const vw = videoEl.videoWidth;
+  const vh = videoEl.videoHeight;
+  if (!vw || !vh) return null;
+
+  // Recuadro algo más amplio que el de OCR para que se vea la lámina completa.
+  const boxLeft = 0.08, boxRight = 0.08, boxTop = 0.30, boxHeight = 0.38;
+  const sx = vw * boxLeft;
+  const sw = vw * (1 - boxLeft - boxRight);
+  const sy = vh * boxTop;
+  const sh = vh * boxHeight;
+
+  const dh = 180;
+  const dw = Math.round(dh * (sw / sh));
+  const c = document.createElement('canvas');
+  c.width = dw; c.height = dh;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(videoEl, sx, sy, sw, sh, 0, 0, dw, dh);
+  try { return c.toDataURL('image/jpeg', 0.7); }
+  catch { return null; }
+}
+
 // Captura la región central (equivalente al recuadro .scan-box) y la
 // preprocesa para mejorar el OCR: recorte, escalado, escala de grises y umbral.
 export function captureScanRegion(videoEl, canvas) {
