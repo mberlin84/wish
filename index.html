@@ -14,6 +14,7 @@
   <header class="app-header">
     <h1>⚽ Mis Láminas</h1>
     <p class="subtitle" id="albumName">Mundial 2026</p>
+    <p class="session-line" id="sessionLine">Modo invitado (datos solo en este dispositivo)</p>
   </header>
 
   <section class="stats" id="stats">
@@ -85,31 +86,98 @@
       </details>
     </div>
 
-    <!-- ====== ÁLBUM ====== -->
-    <div class="tab-panel" id="tab-album" hidden>
-      <div class="card">
-        <label for="albumNameInput">Nombre del álbum</label>
-        <input type="text" id="albumNameInput" />
+    <!-- ====== TRUEQUE ====== -->
+    <div class="tab-panel" id="tab-trade" hidden>
+      <div class="card" id="tradeLoggedOut" hidden>
+        <h2>🤝 Trueque</h2>
+        <p class="hint">Para hacer trueque con otras personas necesitas <strong>iniciar sesión</strong> y, de ser posible, <strong>compartir tu ubicación</strong> (pestaña Cuenta). Así encontramos a quienes tienen lo que te falta cerca de ti.</p>
+      </div>
+
+      <div id="tradeLoggedIn" hidden>
+        <button id="findTradesBtn" class="btn btn-primary" style="width:100%">Buscar trueques cerca</button>
+        <p class="hint" id="tradeHint"></p>
+        <div id="tradeResults"></div>
+      </div>
+    </div>
+
+    <!-- ====== CUENTA ====== -->
+    <div class="tab-panel" id="tab-account" hidden>
+      <!-- Sin sesión -->
+      <div id="authSection">
+        <div class="card">
+          <div class="seg">
+            <button class="seg-btn active" data-auth="login">Iniciar sesión</button>
+            <button class="seg-btn" data-auth="register">Crear cuenta</button>
+          </div>
+
+          <form id="loginForm" class="auth-form">
+            <label for="loginEmail">Email</label>
+            <input type="email" id="loginEmail" autocomplete="email" required />
+            <label for="loginPassword">Contraseña</label>
+            <input type="password" id="loginPassword" autocomplete="current-password" required />
+            <button type="submit" class="btn btn-primary">Entrar</button>
+          </form>
+
+          <form id="registerForm" class="auth-form" hidden>
+            <label for="regUsername">Nombre de usuario</label>
+            <input type="text" id="regUsername" autocomplete="nickname" required />
+            <label for="regEmail">Email</label>
+            <input type="email" id="regEmail" autocomplete="email" required />
+            <label for="regPassword">Contraseña (mín. 6)</label>
+            <input type="password" id="regPassword" autocomplete="new-password" required />
+            <button type="submit" class="btn btn-primary">Crear cuenta</button>
+          </form>
+
+          <p class="auth-feedback" id="authFeedback"></p>
+        </div>
+
+        <div class="card">
+          <label for="apiBaseInput">Servidor (URL del backend)</label>
+          <input type="url" id="apiBaseInput" placeholder="https://mi-servidor.com (vacío = mismo origen)" />
+          <button id="saveApiBaseBtn" class="btn btn-ghost" style="margin-top:8px">Guardar servidor</button>
+          <p class="hint">Déjalo vacío si abres la app desde el mismo servidor. Útil si el backend está en otra URL.</p>
+        </div>
+      </div>
+
+      <!-- Con sesión -->
+      <div id="profileSection" hidden>
+        <div class="card">
+          <h2 id="profileGreeting">Hola</h2>
+          <p class="hint" id="profileEmail"></p>
+          <button id="logoutBtn" class="btn btn-ghost" style="margin-top:8px">Cerrar sesión</button>
+        </div>
+
+        <div class="card">
+          <h2>📍 Tu ubicación</h2>
+          <p class="hint">Sirve para encontrar trueques cerca de ti. Puedes usar el GPS o escribir tu ciudad/zona.</p>
+          <button id="gpsBtn" class="btn btn-secondary" style="width:100%; margin:8px 0">Usar mi ubicación (GPS)</button>
+          <label for="cityInput">Ciudad / zona (respaldo manual)</label>
+          <input type="text" id="cityInput" placeholder="ej. Caracas, Chacao" />
+          <button id="saveLocationBtn" class="btn btn-primary" style="margin-top:8px; width:100%">Guardar ubicación</button>
+          <p class="confirm-feedback" id="locationFeedback"></p>
+        </div>
+
+        <details class="card">
+          <summary class="card-summary">⚙️ Configurar álbum</summary>
+          <p class="hint">El set es compartido por todos (para que los números coincidan en los trueques). El conteo oficial del Mundial 2026 aún no está cerrado: ajústalo cuando se confirme.</p>
+          <div id="sectionsEditor"></div>
+          <button id="addSectionBtn" class="btn btn-ghost">+ Agregar sección</button>
+          <button id="saveAlbumBtn" class="btn btn-secondary" style="margin-top:8px; width:100%">Guardar álbum</button>
+          <p class="confirm-feedback" id="albumFeedback"></p>
+        </details>
       </div>
 
       <div class="card">
-        <h2>Secciones del set</h2>
-        <p class="hint">Define los rangos de números. El conteo oficial del Mundial 2026 aún no está cerrado: ajústalo cuando se confirme.</p>
-        <div id="sectionsEditor"></div>
-        <button id="addSectionBtn" class="btn btn-ghost">+ Agregar sección</button>
-      </div>
-
-      <div class="card">
-        <h2>Datos</h2>
+        <h2>Datos locales</h2>
         <div class="data-actions">
           <button id="exportBtn" class="btn btn-secondary">Exportar (.json)</button>
           <label class="btn btn-secondary file-label">
             Importar
             <input type="file" id="importInput" accept="application/json" hidden />
           </label>
-          <button id="resetBtn" class="btn btn-danger">Borrar todo</button>
+          <button id="resetBtn" class="btn btn-danger">Borrar local</button>
         </div>
-        <p class="hint">Tus datos se guardan solo en este dispositivo (localStorage). Exporta para respaldar.</p>
+        <p class="hint">Exportar/Importar respalda la colección guardada en este dispositivo (modo invitado). Con sesión iniciada, tu colección vive en el servidor.</p>
       </div>
     </div>
   </main>
@@ -117,7 +185,8 @@
   <nav class="tabbar">
     <button class="tab-btn active" data-tab="scan">📷<span>Escanear</span></button>
     <button class="tab-btn" data-tab="lists">📋<span>Listas</span></button>
-    <button class="tab-btn" data-tab="album">⚙️<span>Álbum</span></button>
+    <button class="tab-btn" data-tab="trade">🤝<span>Trueque</span></button>
+    <button class="tab-btn" data-tab="account">👤<span>Cuenta</span></button>
   </nav>
 
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>

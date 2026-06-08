@@ -1,77 +1,123 @@
 # ⚽ Mis Láminas · Mundial 2026
 
-App web (PWA) para llevar el control de tu álbum de láminas del Mundial usando la
-**cámara del celular**. Escaneas el número impreso de cada lámina con OCR y la app
-te arma automáticamente dos listas:
+App para llevar el control de tu álbum de láminas del Mundial usando la **cámara
+del celular**, con **cuentas de usuario** y **trueque por cercanía**.
 
-- **Faltantes**: las láminas que aún no tienes.
-- **Repetidas**: las que escaneaste más de una vez (las que te sobran para cambiar).
+- 📷 Escaneas el número impreso de cada lámina (OCR en el navegador).
+- ❌ **Faltantes** / ♻️ **Repetidas** se calculan solos.
+- 👤 Tu colección queda **asociada a tu usuario** (guardada en el servidor).
+- 📍 Compartes tu **ubicación** (GPS o ciudad) y la app te muestra **con quién
+  hacer trueque cerca de ti**: quién tiene lo que te falta y a quién le sirven tus
+  repetidas.
 
-> Pensada para el **Mundial 2026 (FIFA)**. Como el conteo oficial del set aún no
-> está cerrado, los rangos de números son **editables** desde la pestaña *Álbum*.
+> Pensada para el **Mundial 2026 (FIFA)**. El set es **editable** porque el conteo
+> oficial aún no está cerrado.
 
-## Cómo funciona
+## Arquitectura
 
-1. **Escanear** 📷 — Abres la cámara, encuadras el número de la lámina dentro del
-   recuadro amarillo y tocas *Escanear*. El OCR (Tesseract.js, en el navegador)
-   detecta el número; lo confirmas o lo corriges y lo agregas.
-   - Si **no la tenías** → entra a tu colección.
-   - Si **ya la tenías** → se marca como **repetida** automáticamente.
-   - También hay **carga manual** rápida (escribir el número y Enter) por si
-     prefieres no usar la cámara o el OCR falla.
-2. **Listas** 📋 — Ves *Repetidas*, *Faltantes* (con buscador) y *Tengo*. Puedes
-   tocar una lámina para sumar/restar unidades, y **compartir/copiar** el resultado
-   (texto listo para WhatsApp).
-3. **Álbum** ⚙️ — Defines el set (nombre y secciones con prefijo + rango), y
-   **exportas/importas** tu colección como `.json` para respaldarla.
-
-Tus datos se guardan **solo en tu dispositivo** (localStorage). Nada se sube a
-ningún servidor.
-
-## Cómo usarla en el celular
-
-La cámara necesita **HTTPS** (o `localhost`). Opciones:
-
-### Opción A — Probarla en tu compu
-```bash
-# Python 3
-python3 -m http.server 8000
-# luego abre http://localhost:8000 en el navegador
 ```
-Para usar la cámara desde el celular necesitas HTTPS; lo más fácil es la Opción B.
+Frontend (PWA, estático)            Backend (Node + Express)         Base de datos
+  index.html / css / js     <--->     /api/...                <--->   PostgreSQL
+  - cámara + OCR (Tesseract.js)        - auth (JWT + bcrypt)           - users
+  - colección y listas                 - colección por usuario         - stickers
+  - trueque                            - emparejador de trueques       - album_sections
+```
 
-### Opción B — Publicarla gratis (recomendado para el celular)
-Sube esta carpeta a cualquier hosting estático con HTTPS. Por ejemplo
-**GitHub Pages**:
+- Sin sesión funciona en **modo invitado** (datos solo en el dispositivo).
+- Con sesión, la colección vive en **PostgreSQL** y se habilita el **trueque**.
+- El backend también sirve la PWA, así que puedes desplegar todo junto.
 
-1. Sube el repo a GitHub.
-2. *Settings → Pages → Build from branch* → elige la rama y carpeta `/root`.
-3. Abre la URL `https://<usuario>.github.io/<repo>/` en el celular.
-4. En el navegador del celular: menú → **"Agregar a pantalla de inicio"** para
-   instalarla como app.
+## Puesta en marcha
+
+### 1) Base de datos
+Necesitas un PostgreSQL (local o en la nube). Crea una base de datos vacía, por
+ejemplo `mislaminas`.
+
+### 2) Backend
+```bash
+cd server
+cp .env.example .env        # edita DATABASE_URL y JWT_SECRET
+npm install
+npm run migrate             # crea las tablas y siembra el set 2026
+npm start                   # arranca en http://localhost:3000
+```
+Abre `http://localhost:3000` (el servidor sirve la app y la API juntas).
+
+Variables de entorno (`server/.env`):
+
+| Variable        | Descripción                                              |
+|-----------------|----------------------------------------------------------|
+| `DATABASE_URL`  | Cadena de conexión a PostgreSQL                          |
+| `DATABASE_SSL`  | `true` si tu Postgres requiere SSL (nube)                |
+| `JWT_SECRET`    | Secreto para firmar las sesiones (cámbialo)              |
+| `PORT`          | Puerto del servidor (def. 3000)                          |
+| `ALBUM_NAME`    | Nombre del álbum mostrado en la app                      |
+
+### 3) Frontend separado (opcional)
+Si prefieres servir la PWA aparte (p. ej. GitHub Pages) y el backend en otra URL,
+abre la app, ve a **Cuenta → Servidor** y escribe la URL del backend
+(ej. `https://mi-backend.com`). El CORS ya está habilitado.
+
+> La **cámara** y el **GPS** requieren **HTTPS** (o `localhost`). Para usarlos
+> desde el celular, despliega el backend con HTTPS o usa un túnel (p. ej. la app
+> tras un proxy con certificado).
+
+## API
+
+| Método | Ruta                     | Auth | Descripción                              |
+|--------|--------------------------|------|------------------------------------------|
+| POST   | `/api/auth/register`     | —    | Crear cuenta (email, usuario, contraseña)|
+| POST   | `/api/auth/login`        | —    | Iniciar sesión → token JWT               |
+| GET    | `/api/me`                | ✓    | Datos del usuario                        |
+| PUT    | `/api/me/location`       | ✓    | Guardar `lat`, `lng`, `city`             |
+| GET    | `/api/album`             | —    | Definición del set (global)              |
+| PUT    | `/api/album`             | ✓    | Reemplazar secciones del set             |
+| GET    | `/api/collection`        | ✓    | Colección del usuario `{code: count}`    |
+| POST   | `/api/collection/add`    | ✓    | +1 a una lámina (repetida si ya existe)  |
+| POST   | `/api/collection/remove` | ✓    | −1 a una lámina                          |
+| POST   | `/api/collection/set`    | ✓    | Fijar cantidad exacta (0 = eliminar)     |
+| GET    | `/api/trades`            | ✓    | Trueques posibles, ordenados por cercanía|
+
+### Cómo se calcula el trueque
+Para tu usuario, el backend cruza tu colección con la de los demás:
+- **Te puede dar**: láminas que el otro tiene **repetidas** y a ti **te faltan**.
+- **Tú le puedes dar**: tus **repetidas** que al otro **le faltan**.
+
+Se priorizan los **trueques mutuos** y se ordenan por **distancia** (haversine
+sobre las coordenadas) y por número de coincidencias.
+
+## Uso de la app
+
+1. **📷 Escanear** — Activas la cámara, encuadras el número en el recuadro y tocas
+   *Escanear*. Confirmas/corriges el número y lo agregas. Hay carga manual también.
+2. **📋 Listas** — *Repetidas*, *Faltantes* (con buscador) y *Tengo*; compartir/copiar.
+3. **🤝 Trueque** — *Buscar trueques cerca* (requiere sesión).
+4. **👤 Cuenta** — Crear cuenta / iniciar sesión, guardar ubicación (GPS o ciudad),
+   configurar el álbum y exportar/importar tus datos locales.
 
 ## Estructura
 
 ```
-index.html            Interfaz (3 pestañas)
-css/styles.css        Estilos (mobile-first, modo oscuro)
-js/app.js             Lógica de la app y UI
-js/store.js           Modelo de datos + localStorage + cálculo de listas
-js/camera.js          Cámara + recorte/preprocesado del recuadro
-js/ocr.js             OCR con Tesseract.js
-manifest.json         Configuración PWA
-service-worker.js     Caché offline del app shell
-icons/icon.svg        Icono
+index.html, css/, js/        Frontend PWA
+  js/api.js                  Cliente del backend (token + fetch)
+  js/store.js                Modelo local + cálculo de listas
+  js/camera.js, js/ocr.js    Cámara y OCR
+  js/app.js                  Lógica y UI
+manifest.json, service-worker.js, icons/   PWA
+
+server/                      Backend
+  src/index.js               App Express (API + estáticos)
+  src/db.js, src/migrate.js  Conexión y migración a PostgreSQL
+  src/auth.js                JWT
+  src/routes/                auth, me, album, collection, trades
+  db/schema.sql              Esquema + semilla del set 2026
 ```
 
-## Notas técnicas
+## Notas
 
-- El **OCR** se hace 100% en el navegador con
-  [Tesseract.js](https://github.com/naptha/tesseract.js) (cargado desde CDN). La
-  **primera** vez que escaneas necesita conexión para bajar el modelo `eng`;
-  después suele quedar cacheado.
-- El reconocimiento se enfoca en el **número impreso** de la lámina (no en la foto
-  del jugador), que es la señal más fiable. Siempre puedes corregir el número antes
-  de agregarlo.
-- Para mejorar el OCR, la imagen del recuadro se recorta, se escala y se convierte
-  a blanco y negro antes de analizarla.
+- El **OCR** corre 100% en el navegador con
+  [Tesseract.js](https://github.com/naptha/tesseract.js); la primera vez baja el
+  modelo `eng` desde CDN (necesita conexión esa vez).
+- Las contraseñas se guardan con **bcrypt**; las sesiones usan **JWT** (30 días).
+- La ubicación es **opcional**: sin ella, el trueque igual encuentra coincidencias,
+  solo que no las ordena por cercanía.

@@ -1,11 +1,44 @@
-// App principal: une cámara, OCR, almacenamiento e interfaz.
+// App principal: cámara + OCR + colección (local o en servidor) + trueque.
 import * as store from './store.js';
 import * as camera from './camera.js';
 import * as ocr from './ocr.js';
+import { api, isLoggedIn, setToken, getApiBase, setApiBase } from './api.js';
 
-let state = store.load();
+let state = store.load();      // { album, owned } — fuente local (modo invitado / caché)
+let currentUser = null;        // datos del usuario con sesión
+let pendingLoc = { lat: null, lng: null }; // ubicación capturada por GPS, pendiente de guardar
 
 const $ = (id) => document.getElementById(id);
+const loggedIn = () => isLoggedIn();
+
+// ---------- Capa de datos (decide local vs servidor) ----------
+const data = {
+  async add(code) {
+    const c = store.normalizeCode(code);
+    if (loggedIn()) {
+      const r = await api.add(c);
+      state.owned[c] = r.count;
+    } else {
+      state.owned[c] = (state.owned[c] || 0) + 1;
+      store.save(state);
+    }
+    return state.owned[c];
+  },
+  async remove(code) {
+    const c = store.normalizeCode(code);
+    if (loggedIn()) {
+      const r = await api.remove(c);
+      if (r.count > 0) state.owned[c] = r.count;
+      else delete state.owned[c];
+    } else {
+      if (!state.owned[c]) return 0;
+      state.owned[c] -= 1;
+      if (state.owned[c] <= 0) delete state.owned[c];
+      store.save(state);
+    }
+    return state.owned[c] || 0;
+  },
+};
 
 // ---------- Navegación por pestañas ----------
 function setupTabs() {
@@ -13,11 +46,9 @@ function setupTabs() {
     btn.addEventListener('click', () => {
       const tab = btn.dataset.tab;
       document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
-      document.querySelectorAll('.tab-panel').forEach((p) => {
-        p.hidden = p.id !== `tab-${tab}`;
-      });
+      document.querySelectorAll('.tab-panel').forEach((p) => { p.hidden = p.id !== `tab-${tab}`; });
       if (tab === 'lists') renderLists();
-      if (tab === 'album') renderAlbumEditor();
+      if (tab === 'account') renderAlbumEditor();
       if (tab !== 'scan' && camera.isActive()) {
         camera.stop($('video'));
         showCameraControls(false);
@@ -26,36 +57,33 @@ function setupTabs() {
   });
 }
 
-// ---------- Lógica central: agregar una lámina ----------
-function addSticker(rawCode) {
+// ---------- Lógica: agregar lámina ----------
+async function addSticker(rawCode) {
   const code = store.normalizeCode(rawCode);
   if (!code) return { status: 'empty' };
-
   const inAlbum = store.isInAlbum(state.album, code);
   const prev = state.owned[code] || 0;
-  state.owned[code] = prev + 1;
-  store.save(state);
+  let count;
+  try {
+    count = await data.add(code);
+  } catch (e) {
+    return { status: 'error', message: e.message };
+  }
   renderStats();
-
   let status;
   if (prev === 0) status = inAlbum ? 'new' : 'new-foreign';
   else status = 'duplicate';
-
-  return { status, code, count: state.owned[code], inAlbum };
+  return { status, code, count, inAlbum };
 }
 
 function feedbackFor(result) {
   switch (result.status) {
-    case 'empty':
-      return { cls: 'warn', msg: 'No se detectó ningún número. Inténtalo de nuevo o escríbelo.' };
-    case 'new':
-      return { cls: 'ok', msg: `✅ Lámina ${result.code} agregada a tu colección.` };
-    case 'new-foreign':
-      return { cls: 'warn', msg: `⚠️ ${result.code} agregada, pero no pertenece al álbum configurado.` };
-    case 'duplicate':
-      return { cls: 'dup', msg: `♻️ ${result.code} REPETIDA (tienes ${result.count}). Va a la lista de repetidas.` };
-    default:
-      return { cls: '', msg: '' };
+    case 'empty': return { cls: 'warn', msg: 'No se detectó ningún número. Inténtalo de nuevo o escríbelo.' };
+    case 'error': return { cls: 'warn', msg: '⚠️ ' + (result.message || 'Error al guardar.') };
+    case 'new': return { cls: 'ok', msg: `✅ Lámina ${result.code} agregada a tu colección.` };
+    case 'new-foreign': return { cls: 'warn', msg: `⚠️ ${result.code} agregada, pero no pertenece al álbum.` };
+    case 'duplicate': return { cls: 'dup', msg: `♻️ ${result.code} REPETIDA (tienes ${result.count}). Va a repetidas.` };
+    default: return { cls: '', msg: '' };
   }
 }
 
@@ -77,33 +105,26 @@ function setupScan() {
       setOcrStatus('No se pudo abrir la cámara: ' + e.message);
     }
   });
-
   $('stopCamBtn').addEventListener('click', () => {
     camera.stop($('video'));
     showCameraControls(false);
   });
-
   $('scanBtn').addEventListener('click', onScan);
 
-  $('addBtn').addEventListener('click', () => {
-    const result = addSticker($('codeInput').value);
+  $('addBtn').addEventListener('click', async () => {
+    const result = await addSticker($('codeInput').value);
     showConfirmFeedback(result);
-    $('codeInput').value = '';
+    if (result.status !== 'error') $('codeInput').value = '';
   });
-  $('codeInput').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') $('addBtn').click();
-  });
+  $('codeInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('addBtn').click(); });
 
-  $('manualAddBtn').addEventListener('click', () => {
-    const result = addSticker($('manualInput').value);
-    const fb = feedbackFor(result);
-    setOcrStatus(fb.msg);
-    $('manualInput').value = '';
+  $('manualAddBtn').addEventListener('click', async () => {
+    const result = await addSticker($('manualInput').value);
+    setOcrStatus(feedbackFor(result).msg);
+    if (result.status !== 'error') $('manualInput').value = '';
     $('manualInput').focus();
   });
-  $('manualInput').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') $('manualAddBtn').click();
-  });
+  $('manualInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('manualAddBtn').click(); });
 }
 
 async function onScan() {
@@ -112,11 +133,8 @@ async function onScan() {
     setOcrStatus('Leyendo número…');
     $('scanBtn').disabled = true;
     const res = await ocr.recognize($('captureCanvas'), (m) => {
-      if (m.status === 'recognizing text') {
-        setOcrStatus(`Leyendo número… ${Math.round((m.progress || 0) * 100)}%`);
-      } else if (m.status && m.status.startsWith('loading')) {
-        setOcrStatus('Preparando OCR (primera vez)…');
-      }
+      if (m.status === 'recognizing text') setOcrStatus(`Leyendo número… ${Math.round((m.progress || 0) * 100)}%`);
+      else if (m.status && m.status.startsWith('loading')) setOcrStatus('Preparando OCR (primera vez)…');
     });
     setOcrStatus(res.candidate
       ? `Detectado: "${res.candidate}" (confianza ${res.confidence}%)`
@@ -137,14 +155,12 @@ function showConfirm(candidate) {
   $('codeInput').focus();
   $('codeInput').select();
 }
-
 function showConfirmFeedback(result) {
   const fb = feedbackFor(result);
   const el = $('confirmFeedback');
   el.textContent = fb.msg;
   el.className = 'confirm-feedback ' + fb.cls;
 }
-
 function setOcrStatus(msg) {
   const el = $('ocrStatus');
   el.hidden = !msg;
@@ -162,67 +178,42 @@ function renderStats() {
 
 // ---------- Pestaña Listas ----------
 let missingFilterValue = '';
-
 function renderLists() {
-  const { have, missing, repeated, extras, foreign } = store.computeLists(state);
-
+  const { have, missing, repeated, foreign } = store.computeLists(state);
   $('repeatedCount').textContent = repeated.length;
   $('missingCount').textContent = missing.length;
   $('haveCount').textContent = have.length;
 
-  // Repetidas
   const repEl = $('repeatedList');
   repEl.innerHTML = '';
-  if (!repeated.length) {
-    repEl.innerHTML = '<span class="chip-empty">Sin repetidas todavía.</span>';
-  } else {
-    repeated.forEach((r) => {
-      const chip = makeChip(`${r.code}`, 'repeated', () => decrement(r.code));
-      const x = document.createElement('span');
-      x.className = 'x';
-      x.textContent = `×${r.extra + 1}`;
-      chip.appendChild(x);
-      chip.title = 'Toca para quitar una unidad';
-      repEl.appendChild(chip);
-    });
-  }
-  if (foreign.length) {
-    foreign.forEach((f) => {
-      const chip = makeChip(`${f.code} (fuera del set)`, 'repeated', () => removeCode(f.code));
-      repEl.appendChild(chip);
-    });
-  }
+  if (!repeated.length) repEl.innerHTML = '<span class="chip-empty">Sin repetidas todavía.</span>';
+  else repeated.forEach((r) => {
+    const chip = makeChip(`${r.code}`, 'repeated', () => decrement(r.code));
+    const x = document.createElement('span');
+    x.className = 'x'; x.textContent = `×${r.extra + 1}`;
+    chip.appendChild(x);
+    chip.title = 'Toca para quitar una unidad';
+    repEl.appendChild(chip);
+  });
+  foreign.forEach((f) => repEl.appendChild(makeChip(`${f.code} (fuera del set)`, 'repeated', () => decrement(f.code))));
 
-  // Faltantes (con filtro)
   const missEl = $('missingList');
   missEl.innerHTML = '';
-  const filtered = missingFilterValue
-    ? missing.filter((c) => c.includes(missingFilterValue.toUpperCase()))
-    : missing;
+  const filtered = missingFilterValue ? missing.filter((c) => c.includes(missingFilterValue.toUpperCase())) : missing;
   if (!filtered.length) {
     missEl.innerHTML = '<span class="chip-empty">' +
       (missing.length ? 'Nada coincide con el filtro.' : '🎉 ¡No te falta ninguna!') + '</span>';
   } else {
-    filtered.forEach((c) => {
-      missEl.appendChild(makeChip(c, '', () => {
-        addSticker(c);
-        renderLists();
-      }));
-    });
+    filtered.forEach((c) => missEl.appendChild(makeChip(c, '', async () => { await addSticker(c); renderLists(); })));
   }
 
-  // Tengo
   const haveEl = $('haveList');
   haveEl.innerHTML = '';
-  if (!have.length) {
-    haveEl.innerHTML = '<span class="chip-empty">Aún no registras ninguna.</span>';
-  } else {
-    have.forEach((c) => {
-      const count = state.owned[c];
-      const chip = makeChip(count > 1 ? `${c} ×${count}` : c, 'have', () => decrement(c));
-      haveEl.appendChild(chip);
-    });
-  }
+  if (!have.length) haveEl.innerHTML = '<span class="chip-empty">Aún no registras ninguna.</span>';
+  else have.forEach((c) => {
+    const count = state.owned[c];
+    haveEl.appendChild(makeChip(count > 1 ? `${c} ×${count}` : c, 'have', () => decrement(c)));
+  });
 }
 
 function makeChip(label, extraClass, onClick) {
@@ -232,76 +223,157 @@ function makeChip(label, extraClass, onClick) {
   if (onClick) chip.addEventListener('click', onClick);
   return chip;
 }
-
-function decrement(code) {
-  const c = store.normalizeCode(code);
-  if (!state.owned[c]) return;
-  state.owned[c] -= 1;
-  if (state.owned[c] <= 0) delete state.owned[c];
-  store.save(state);
-  renderStats();
-  renderLists();
-}
-
-function removeCode(code) {
-  delete state.owned[store.normalizeCode(code)];
-  store.save(state);
+async function decrement(code) {
+  await data.remove(code);
   renderStats();
   renderLists();
 }
 
 function setupLists() {
-  $('missingFilter').addEventListener('input', (e) => {
-    missingFilterValue = e.target.value.trim();
-    renderLists();
-  });
+  $('missingFilter').addEventListener('input', (e) => { missingFilterValue = e.target.value.trim(); renderLists(); });
   $('shareBtn').addEventListener('click', shareResult);
   $('copyBtn').addEventListener('click', copyResult);
 }
-
 function buildResultText() {
   const { missing, repeated, have, total } = store.computeLists(state);
-  const lines = [];
-  lines.push(`📒 ${state.album.name}`);
-  lines.push(`Tengo ${have.length}/${total} · Faltan ${missing.length} · Repetidas ${repeated.reduce((a, r) => a + r.extra, 0)}`);
-  lines.push('');
-  lines.push(`❌ FALTANTES (${missing.length}):`);
-  lines.push(missing.length ? missing.join(', ') : '¡Ninguna!');
-  lines.push('');
-  lines.push(`♻️ REPETIDAS:`);
-  lines.push(repeated.length ? repeated.map((r) => `${r.code} (x${r.extra + 1})`).join(', ') : 'Ninguna');
-  return lines.join('\n');
+  return [
+    `📒 ${state.album.name}`,
+    `Tengo ${have.length}/${total} · Faltan ${missing.length} · Repetidas ${repeated.reduce((a, r) => a + r.extra, 0)}`,
+    '',
+    `❌ FALTANTES (${missing.length}):`,
+    missing.length ? missing.join(', ') : '¡Ninguna!',
+    '',
+    `♻️ REPETIDAS:`,
+    repeated.length ? repeated.map((r) => `${r.code} (x${r.extra + 1})`).join(', ') : 'Ninguna',
+  ].join('\n');
 }
-
 async function shareResult() {
   const text = buildResultText();
-  if (navigator.share) {
-    try { await navigator.share({ title: state.album.name, text }); return; } catch (e) { /* cancelado */ }
-  }
+  if (navigator.share) { try { await navigator.share({ title: state.album.name, text }); return; } catch (e) {} }
   copyResult();
 }
-
 async function copyResult() {
   const text = buildResultText();
-  try {
-    await navigator.clipboard.writeText(text);
-    flashListAction('Copiado al portapapeles ✅');
-  } catch (e) {
-    // Fallback: mostrar en prompt
-    window.prompt('Copia el resultado:', text);
+  try { await navigator.clipboard.writeText(text); flashCopy('Copiado ✅'); }
+  catch (e) { window.prompt('Copia el resultado:', text); }
+}
+function flashCopy(msg) {
+  const btn = $('copyBtn'); const old = btn.textContent;
+  btn.textContent = msg; setTimeout(() => { btn.textContent = old; }, 1500);
+}
+
+// ---------- Cuenta: autenticación ----------
+function setupAuth() {
+  document.querySelectorAll('.seg-btn').forEach((b) => b.addEventListener('click', () => {
+    document.querySelectorAll('.seg-btn').forEach((x) => x.classList.toggle('active', x === b));
+    const mode = b.dataset.auth;
+    $('loginForm').hidden = mode !== 'login';
+    $('registerForm').hidden = mode !== 'register';
+    setAuthFeedback('');
+  }));
+
+  $('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const r = await api.login({ email: $('loginEmail').value, password: $('loginPassword').value });
+      await onAuthSuccess(r);
+    } catch (err) { setAuthFeedback(err.message, 'warn'); }
+  });
+
+  $('registerForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const r = await api.register({
+        username: $('regUsername').value, email: $('regEmail').value, password: $('regPassword').value,
+      });
+      await onAuthSuccess(r);
+    } catch (err) { setAuthFeedback(err.message, 'warn'); }
+  });
+
+  $('logoutBtn').addEventListener('click', () => {
+    setToken(null);
+    currentUser = null;
+    state = store.load(); // vuelve al modo invitado local
+    renderAuthState();
+    renderStats();
+  });
+
+  $('apiBaseInput').value = getApiBase();
+  $('saveApiBaseBtn').addEventListener('click', () => {
+    setApiBase($('apiBaseInput').value.trim());
+    setAuthFeedback('Servidor guardado ✅', 'ok');
+  });
+}
+
+async function onAuthSuccess(r) {
+  setToken(r.token);
+  currentUser = r.user;
+  setAuthFeedback('');
+  await loadFromServer();
+  renderAuthState();
+  renderStats();
+}
+
+function setAuthFeedback(msg, cls = '') {
+  const el = $('authFeedback');
+  el.textContent = msg;
+  el.className = 'auth-feedback ' + cls;
+}
+
+async function loadFromServer() {
+  const [albumRes, colRes, meRes] = await Promise.all([api.getAlbum(), api.getCollection(), api.me()]);
+  state = { album: albumRes, owned: colRes.owned || {} };
+  currentUser = meRes.user;
+}
+
+function renderAuthState() {
+  const on = loggedIn();
+  $('authSection').hidden = on;
+  $('profileSection').hidden = !on;
+  $('tradeLoggedIn').hidden = !on;
+  $('tradeLoggedOut').hidden = on;
+  if (on && currentUser) {
+    $('sessionLine').textContent = `Sesión: ${currentUser.username}`;
+    $('profileGreeting').textContent = `Hola, ${currentUser.username} 👋`;
+    $('profileEmail').textContent = currentUser.email || '';
+    $('cityInput').value = currentUser.city || '';
+    pendingLoc = { lat: currentUser.lat ?? null, lng: currentUser.lng ?? null };
+  } else {
+    $('sessionLine').textContent = 'Modo invitado (datos solo en este dispositivo)';
   }
 }
 
-function flashListAction(msg) {
-  const btn = $('copyBtn');
-  const old = btn.textContent;
-  btn.textContent = msg;
-  setTimeout(() => { btn.textContent = old; }, 1500);
+// ---------- Cuenta: ubicación ----------
+function setupLocation() {
+  $('gpsBtn').addEventListener('click', () => {
+    if (!navigator.geolocation) { setLocationFeedback('Este navegador no tiene GPS.', 'warn'); return; }
+    setLocationFeedback('Obteniendo ubicación…');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        pendingLoc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        setLocationFeedback(`Ubicación lista (±${Math.round(pos.coords.accuracy)} m). Pulsa "Guardar".`, 'ok');
+      },
+      (err) => setLocationFeedback('No se pudo obtener el GPS: ' + err.message + '. Usa la ciudad manual.', 'warn'),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  });
+
+  $('saveLocationBtn').addEventListener('click', async () => {
+    try {
+      const r = await api.setLocation({ lat: pendingLoc.lat, lng: pendingLoc.lng, city: $('cityInput').value });
+      currentUser = r.user;
+      setLocationFeedback('Ubicación guardada ✅', 'ok');
+    } catch (e) { setLocationFeedback(e.message, 'warn'); }
+  });
+}
+function setLocationFeedback(msg, cls = '') {
+  const el = $('locationFeedback');
+  el.textContent = msg;
+  el.className = 'confirm-feedback ' + cls;
 }
 
-// ---------- Pestaña Álbum ----------
+// ---------- Cuenta: editor de álbum ----------
 function renderAlbumEditor() {
-  $('albumNameInput').value = state.album.name || '';
   const wrap = $('sectionsEditor');
   wrap.innerHTML = '';
   state.album.sections.forEach((s, idx) => {
@@ -312,20 +384,17 @@ function renderAlbumEditor() {
       <div><label>Prefijo</label><input data-f="prefix" value="${escapeAttr(s.prefix || '')}" placeholder="(ninguno)" /></div>
       <div><label>Desde</label><input data-f="from" type="number" value="${s.from}" /></div>
       <div><label>Hasta</label><input data-f="to" type="number" value="${s.to}" /></div>
-      <button class="del-section" title="Eliminar sección">✕</button>
-    `;
-    row.querySelectorAll('input').forEach((inp) => {
-      inp.addEventListener('change', () => {
-        const f = inp.dataset.f;
-        if (f === 'from' || f === 'to') s[f] = parseInt(inp.value, 10) || 0;
-        else s[f] = inp.value;
-        store.save(state);
-        renderStats();
-      });
-    });
+      <button class="del-section" title="Eliminar sección">✕</button>`;
+    row.querySelectorAll('input').forEach((inp) => inp.addEventListener('change', () => {
+      const f = inp.dataset.f;
+      if (f === 'from' || f === 'to') s[f] = parseInt(inp.value, 10) || 0;
+      else s[f] = inp.value;
+      if (!loggedIn()) store.save(state);
+      renderStats();
+    }));
     row.querySelector('.del-section').addEventListener('click', () => {
       state.album.sections.splice(idx, 1);
-      store.save(state);
+      if (!loggedIn()) store.save(state);
       renderAlbumEditor();
       renderStats();
     });
@@ -334,77 +403,139 @@ function renderAlbumEditor() {
 }
 
 function setupAlbum() {
-  $('albumNameInput').addEventListener('change', (e) => {
-    state.album.name = e.target.value;
-    store.save(state);
-    renderStats();
-  });
   $('addSectionBtn').addEventListener('click', () => {
-    state.album.sections.push({ id: 's' + Date.now(), name: 'Nueva', prefix: '', from: 1, to: 10 });
-    store.save(state);
+    state.album.sections.push({ name: 'Nueva', prefix: '', from: 1, to: 10 });
+    if (!loggedIn()) store.save(state);
     renderAlbumEditor();
   });
-  $('exportBtn').addEventListener('click', exportData);
-  $('importInput').addEventListener('change', importData);
-  $('resetBtn').addEventListener('click', () => {
-    if (confirm('¿Borrar TODO (colección y configuración)? Esto no se puede deshacer.')) {
-      state = { album: store.defaultAlbum(), owned: {} };
+  $('saveAlbumBtn').addEventListener('click', async () => {
+    if (loggedIn()) {
+      try { await api.saveAlbum(state.album.sections); setAlbumFeedback('Álbum guardado en el servidor ✅', 'ok'); }
+      catch (e) { setAlbumFeedback(e.message, 'warn'); }
+    } else {
       store.save(state);
-      renderStats();
-      renderAlbumEditor();
+      setAlbumFeedback('Álbum guardado en este dispositivo ✅', 'ok');
+    }
+    renderStats();
+  });
+}
+function setAlbumFeedback(msg, cls = '') {
+  const el = $('albumFeedback');
+  el.textContent = msg;
+  el.className = 'confirm-feedback ' + cls;
+}
+
+// ---------- Cuenta: datos locales ----------
+function setupData() {
+  $('exportBtn').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify({ album: state.album, owned: state.owned }, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `mis-laminas-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click(); URL.revokeObjectURL(url);
+  });
+  $('importInput').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const d = JSON.parse(reader.result);
+        if (!d.album || !Array.isArray(d.album.sections)) throw new Error('Formato inválido');
+        state = { album: d.album, owned: d.owned || {} };
+        if (!loggedIn()) store.save(state);
+        renderStats(); renderAlbumEditor();
+        alert('Datos importados ✅' + (loggedIn() ? ' (solo en memoria; con sesión la colección vive en el servidor)' : ''));
+      } catch (err) { alert('No se pudo importar: ' + err.message); }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  });
+  $('resetBtn').addEventListener('click', () => {
+    if (confirm('¿Borrar la colección guardada en ESTE dispositivo (modo invitado)?')) {
+      const fresh = { album: store.defaultAlbum(), owned: {} };
+      store.save(fresh);
+      if (!loggedIn()) { state = fresh; renderStats(); renderAlbumEditor(); }
     }
   });
 }
 
-function exportData() {
-  const blob = new Blob([JSON.stringify({ album: state.album, owned: state.owned }, null, 2)],
-    { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `mis-laminas-${new Date().toISOString().slice(0, 10)}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
+// ---------- Trueque ----------
+function setupTrade() {
+  $('findTradesBtn').addEventListener('click', findTrades);
 }
-
-function importData(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const data = JSON.parse(reader.result);
-      if (!data.album || !Array.isArray(data.album.sections)) throw new Error('Formato inválido');
-      state = { album: data.album, owned: data.owned || {} };
-      store.save(state);
-      renderStats();
-      renderAlbumEditor();
-      alert('Datos importados ✅');
-    } catch (err) {
-      alert('No se pudo importar: ' + err.message);
+async function findTrades() {
+  const results = $('tradeResults');
+  results.innerHTML = '';
+  $('tradeHint').textContent = 'Buscando…';
+  try {
+    const { partners, hasLocation } = await api.trades();
+    if (!hasLocation) {
+      $('tradeHint').innerHTML = '💡 Agrega tu ubicación en la pestaña <strong>Cuenta</strong> para ordenar por cercanía.';
+    } else {
+      $('tradeHint').textContent = `${partners.length} persona(s) con coincidencias.`;
     }
-  };
-  reader.readAsText(file);
-  e.target.value = '';
-}
-
-function escapeAttr(s) {
-  return String(s).replace(/"/g, '&quot;').replace(/</g, '&lt;');
-}
-
-// ---------- Service worker (PWA) ----------
-function setupServiceWorker() {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('service-worker.js').catch(() => {});
+    if (!partners.length) {
+      results.innerHTML = '<p class="trade-empty">Aún no hay coincidencias. Vuelve cuando más gente registre su colección.</p>';
+      return;
+    }
+    partners.forEach((p) => results.appendChild(renderPartner(p)));
+  } catch (e) {
+    $('tradeHint').textContent = '';
+    results.innerHTML = `<p class="trade-empty">⚠️ ${e.message}</p>`;
   }
+}
+function renderPartner(p) {
+  const el = document.createElement('div');
+  el.className = 'partner';
+  const mutual = p.theyGive.length > 0 && p.iGive.length > 0;
+  const dist = p.distanceKm != null ? `${p.distanceKm} km` : '';
+  el.innerHTML = `
+    <div class="partner-head">
+      <div>
+        <span class="partner-name">${escapeHtml(p.username)}</span>${mutual ? '<span class="mutual-badge">trueque mutuo</span>' : ''}
+        <div class="partner-meta">${escapeHtml(p.city || 'Sin ciudad')}</div>
+      </div>
+      <span class="partner-dist">${dist}</span>
+    </div>
+    ${p.theyGive.length ? `<p class="trade-line get">⬇️ Te puede dar (${p.theyGive.length}):</p><div class="chips">${chipsHtml(p.theyGive)}</div>` : ''}
+    ${p.iGive.length ? `<p class="trade-line give">⬆️ Tú le puedes dar (${p.iGive.length}):</p><div class="chips">${chipsHtml(p.iGive)}</div>` : ''}
+  `;
+  return el;
+}
+function chipsHtml(codes) {
+  return codes.map((c) => `<span class="chip">${escapeHtml(c)}</span>`).join('');
+}
+
+// ---------- Utilidades ----------
+function escapeAttr(s) { return String(s).replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+function escapeHtml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+// ---------- Service worker ----------
+function setupServiceWorker() {
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('service-worker.js').catch(() => {});
 }
 
 // ---------- Init ----------
-function init() {
+async function init() {
   setupTabs();
   setupScan();
   setupLists();
+  setupAuth();
+  setupLocation();
   setupAlbum();
+  setupData();
+  setupTrade();
+
+  if (loggedIn()) {
+    try { await loadFromServer(); }
+    catch (e) {
+      // Si el servidor no responde, seguimos en modo local con lo que haya.
+      console.warn('No se pudo cargar del servidor:', e.message);
+      setAuthFeedback('No se pudo conectar al servidor; usando datos locales.', 'warn');
+    }
+  }
+  renderAuthState();
   renderStats();
   setupServiceWorker();
 }
