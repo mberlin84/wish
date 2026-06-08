@@ -9,11 +9,24 @@ const router = express.Router();
 const TOKEN_TTL_MIN = 15;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// Base pública para construir el enlace (deriva del request si no se configura).
+// Hosts de confianza para construir enlaces cuando no hay APP_URL (solo dev).
+const ALLOWED_HOSTS = (process.env.ALLOWED_HOSTS || 'localhost,127.0.0.1')
+  .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+
+// Base pública para construir el enlace mágico.
+// SEGURIDAD: nunca confiamos en el header Host para un enlace con credenciales.
+// - Si hay APP_URL, se usa siempre (recomendado en producción).
+// - Si no, solo se acepta el host si está en la allowlist (localhost por defecto);
+//   así un atacante no puede forjar `Host:` para desviar el enlace de la víctima.
 function appUrl(req) {
   if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, '');
-  const proto = req.headers['x-forwarded-proto'] || req.protocol;
-  return `${proto}://${req.get('host')}`;
+  const host = (req.get('host') || '').toLowerCase();
+  const hostname = host.split(':')[0];
+  if (!ALLOWED_HOSTS.includes(hostname)) {
+    throw new Error('Host no permitido para generar enlaces. Configura APP_URL.');
+  }
+  const proto = req.protocol === 'https' ? 'https' : 'http';
+  return `${proto}://${host}`;
 }
 
 // 1) Pedir enlace mágico: genera token de un solo uso y lo envía por correo.

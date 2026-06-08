@@ -32,7 +32,11 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       MAIL_FROM: ${MAIL_FROM:-Mis Láminas <onboarding@resend.dev>}
       # Base pública para los enlaces (vacío = se deduce del request, ej. localhost).
+      # En producción ponlo (ej. https://tu-dominio.com): es lo más seguro.
       APP_URL: ${APP_URL:-}
+      # Si NO usas APP_URL, solo se aceptan estos hosts para construir enlaces
+      # (evita que un Host: falso desvíe el enlace de la víctima).
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
     ports:
       # Cambia el puerto del host con: HOST_PORT=8080 docker compose up
       - "${HOST_PORT:-3000}:3000"
