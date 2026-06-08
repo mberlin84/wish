@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b6e4f" />
+  <title>Mis Láminas · Mundial 2026</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icons/icon.svg" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>⚽ Mis Láminas</h1>
+    <p class="subtitle" id="albumName">Mundial 2026</p>
+  </header>
+
+  <section class="stats" id="stats">
+    <div class="stat"><span class="stat-num" id="statHave">0</span><span class="stat-label">Tengo</span></div>
+    <div class="stat"><span class="stat-num" id="statMissing">0</span><span class="stat-label">Faltan</span></div>
+    <div class="stat"><span class="stat-num" id="statRepeated">0</span><span class="stat-label">Repetidas</span></div>
+  </section>
+
+  <main>
+    <!-- ====== ESCANEAR ====== -->
+    <div class="tab-panel" id="tab-scan">
+      <div class="camera-wrap">
+        <video id="video" playsinline muted></video>
+        <div class="scan-box" aria-hidden="true"></div>
+        <canvas id="captureCanvas" hidden></canvas>
+        <div class="camera-hint" id="cameraHint">Encuadra el número de la lámina dentro del recuadro</div>
+      </div>
+
+      <div class="camera-controls">
+        <button id="startCamBtn" class="btn btn-primary">Activar cámara</button>
+        <button id="scanBtn" class="btn btn-primary" hidden>📸 Escanear número</button>
+        <button id="stopCamBtn" class="btn btn-ghost" hidden>Apagar cámara</button>
+      </div>
+
+      <div class="ocr-status" id="ocrStatus" hidden></div>
+
+      <div class="confirm-box" id="confirmBox" hidden>
+        <label for="codeInput">Número detectado (puedes corregirlo):</label>
+        <div class="confirm-row">
+          <input type="text" id="codeInput" inputmode="latin" autocomplete="off" placeholder="ej. 273" />
+          <button id="addBtn" class="btn btn-primary">Agregar</button>
+        </div>
+        <p class="confirm-feedback" id="confirmFeedback"></p>
+      </div>
+
+      <div class="manual-add">
+        <p class="manual-title">Carga manual rápida</p>
+        <div class="confirm-row">
+          <input type="text" id="manualInput" inputmode="latin" autocomplete="off" placeholder="Escribe un número y Enter" />
+          <button id="manualAddBtn" class="btn btn-secondary">Agregar</button>
+        </div>
+        <p class="hint">Cada vez que agregas un número que ya tenías, se marca como <strong>repetida</strong>.</p>
+      </div>
+    </div>
+
+    <!-- ====== LISTAS ====== -->
+    <div class="tab-panel" id="tab-lists" hidden>
+      <div class="list-actions">
+        <button id="shareBtn" class="btn btn-secondary">Compartir resultado</button>
+        <button id="copyBtn" class="btn btn-ghost">Copiar</button>
+      </div>
+
+      <details class="list-group" open>
+        <summary>Repetidas <span class="badge" id="repeatedCount">0</span></summary>
+        <div class="chips" id="repeatedList"></div>
+      </details>
+
+      <details class="list-group" open>
+        <summary>Faltantes <span class="badge" id="missingCount">0</span></summary>
+        <div class="filter-row">
+          <input type="search" id="missingFilter" placeholder="Buscar número..." />
+        </div>
+        <div class="chips" id="missingList"></div>
+      </details>
+
+      <details class="list-group">
+        <summary>Tengo <span class="badge" id="haveCount">0</span></summary>
+        <div class="chips" id="haveList"></div>
+      </details>
+    </div>
+
+    <!-- ====== ÁLBUM ====== -->
+    <div class="tab-panel" id="tab-album" hidden>
+      <div class="card">
+        <label for="albumNameInput">Nombre del álbum</label>
+        <input type="text" id="albumNameInput" />
+      </div>
+
+      <div class="card">
+        <h2>Secciones del set</h2>
+        <p class="hint">Define los rangos de números. El conteo oficial del Mundial 2026 aún no está cerrado: ajústalo cuando se confirme.</p>
+        <div id="sectionsEditor"></div>
+        <button id="addSectionBtn" class="btn btn-ghost">+ Agregar sección</button>
+      </div>
+
+      <div class="card">
+        <h2>Datos</h2>
+        <div class="data-actions">
+          <button id="exportBtn" class="btn btn-secondary">Exportar (.json)</button>
+          <label class="btn btn-secondary file-label">
+            Importar
+            <input type="file" id="importInput" accept="application/json" hidden />
+          </label>
+          <button id="resetBtn" class="btn btn-danger">Borrar todo</button>
+        </div>
+        <p class="hint">Tus datos se guardan solo en este dispositivo (localStorage). Exporta para respaldar.</p>
+      </div>
+    </div>
+  </main>
+
+  <nav class="tabbar">
+    <button class="tab-btn active" data-tab="scan">📷<span>Escanear</span></button>
+    <button class="tab-btn" data-tab="lists">📋<span>Listas</span></button>
+    <button class="tab-btn" data-tab="album">⚙️<span>Álbum</span></button>
+  </nav>
+
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

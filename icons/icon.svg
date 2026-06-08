@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#0b6e4f"/>
+  <circle cx="256" cy="240" r="150" fill="#f2f4f8"/>
+  <g fill="#0b1115">
+    <polygon points="256,150 286,196 256,224 226,196"/>
+    <polygon points="180,205 232,205 248,255 206,288 164,258"/>
+    <polygon points="332,205 280,205 264,255 306,288 348,258"/>
+    <polygon points="206,300 248,330 232,366 180,366 196,322"/>
+    <polygon points="306,300 264,330 280,366 332,366 316,322"/>
+  </g>
+  <rect x="120" y="392" width="272" height="64" rx="16" fill="#f4b400"/>
+  <text x="256" y="438" font-family="system-ui, sans-serif" font-size="44" font-weight="700"
+        text-anchor="middle" fill="#0b1115">2026</text>
+</svg>

@@ -1,0 +1,13 @@
+{
+  "name": "Mis Láminas · Mundial 2026",
+  "short_name": "Mis Láminas",
+  "description": "Escanea con la cámara las láminas del Mundial: lleva el control de faltantes y repetidas.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f1115",
+  "theme_color": "#0b6e4f",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
