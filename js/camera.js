@@ -4,7 +4,10 @@ let stream = null;
 
 // Recuadro de escaneo, en fracciones del elemento <video> visible. DEBE
 // coincidir con .scan-box en el CSS: lo que ves es exactamente lo que se lee.
-export const SCAN_BOX = { left: 0.18, top: 0.42, width: 0.64, height: 0.15 };
+export const SCAN_BOX = { left: 0.18, top: 0.40, width: 0.64, height: 0.20 };
+// Caja para el código GIGANTE de un hueco del álbum (ej. "AUT 3", a dos líneas):
+// más cuadrada y alta. DEBE coincidir con .scan-box.album en el CSS.
+export const ALBUM_BOX = { left: 0.24, top: 0.30, width: 0.52, height: 0.40 };
 
 // opts.zoom: aplicar zoom modesto (útil para leer el código pequeño; se apaga
 // al capturar la foto del cromo completo).
@@ -117,11 +120,11 @@ export function captureCardPhoto(videoEl) {
 
 // Captura la región central (equivalente al recuadro .scan-box) y la
 // preprocesa para mejorar el OCR: recorte, escalado, escala de grises y umbral.
-export function captureScanRegion(videoEl, canvas) {
+export function captureScanRegion(videoEl, canvas, box = SCAN_BOX) {
   if (!videoEl.videoWidth || !videoEl.videoHeight) throw new Error('La cámara aún no está lista.');
 
-  // Recorta EXACTAMENTE el recuadro visible (.scan-box) del frame crudo.
-  const { sx, sy, sw, sh } = coverCrop(videoEl, SCAN_BOX);
+  // Recorta EXACTAMENTE el recuadro visible del frame crudo.
+  const { sx, sy, sw, sh } = coverCrop(videoEl, box);
 
   // Escalar para dar más resolución al OCR.
   const scale = Math.max(1, Math.round(900 / sw));

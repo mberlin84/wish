@@ -44,12 +44,19 @@
         <div class="scan-live" id="scanLive" hidden></div>
       </div>
 
+      <div class="seg scan-mode" id="scanMode" role="group" aria-label="Modo de escaneo">
+        <button type="button" class="seg-btn active" data-mode="add">➕ Agregar</button>
+        <button type="button" class="seg-btn" data-mode="check">🔍 ¿Falta?</button>
+        <button type="button" class="seg-btn" data-mode="album">📖 Álbum</button>
+      </div>
+
       <div class="camera-controls">
         <button id="startCamBtn" class="btn btn-primary">Activar cámara</button>
         <button id="stopCamBtn" class="btn btn-ghost" hidden>Apagar cámara</button>
       </div>
 
       <div class="scan-toast" id="scanToast" hidden></div>
+      <div class="album-bar" id="albumBar" hidden></div>
 
       <details class="manual-add" id="manualBox">
         <summary>Carga manual</summary>

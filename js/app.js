@@ -101,6 +101,9 @@ const votes = new Map();    // código -> puntaje acumulado entre cuadros
 const cooldown = new Map(); // código -> timestamp hasta el que se ignora
 let emptyStreak = 0;        // cuadros seguidos sin código (para resetear votos)
 let toastTimer = null;
+let scanMode = 'add';       // 'add' = agrega | 'check' = solo informa | 'album' = repasar huecos
+let albumTeam = null;       // prefijo del equipo que se está repasando en modo álbum
+const albumHoles = new Set(); // códigos anotados como hueco (no pegados) este repaso
 
 function showCameraControls(active) {
   $('startCamBtn').hidden = active;
@@ -110,6 +113,10 @@ function showCameraControls(active) {
 function setupScan() {
   $('startCamBtn').addEventListener('click', startScanning);
   $('stopCamBtn').addEventListener('click', stopScanning);
+
+  document.querySelectorAll('#scanMode .seg-btn').forEach((btn) => {
+    btn.addEventListener('click', () => { scanMode = btn.dataset.mode; applyScanMode(); });
+  });
 
   $('manualAddBtn').addEventListener('click', async () => {
     const result = await addSticker($('manualInput').value);
@@ -127,9 +134,8 @@ async function startScanning() {
     validCodes = store.albumCodeSet(state.album); // se reconstruye en cada arranque
     votes.clear(); cooldown.clear(); emptyStreak = 0;
     showCameraControls(true);
-    $('cameraHint').textContent = 'Centra solo el código del reverso (ej. KOR 7) dentro del recuadro';
     scanActive = true;
-    setScanLive('Buscando código…');
+    applyScanMode();
     scanLoop();
   } catch (e) {
     setScanLive('No se pudo abrir la cámara: ' + e.message);
@@ -150,7 +156,7 @@ async function scanLoop() {
   if (!ocrBusy && document.visibilityState === 'visible') {
     ocrBusy = true;
     try {
-      camera.captureScanRegion($('video'), $('captureCanvas'));
+      camera.captureScanRegion($('video'), $('captureCanvas'), scanMode === 'album' ? camera.ALBUM_BOX : camera.SCAN_BOX);
       const res = await ocr.recognize($('captureCanvas'));
       if (scanActive) handleReading(res);
     } catch (_) { /* cuadro malo: seguir */ }
@@ -182,46 +188,135 @@ function handleReading(res) {
 }
 
 async function acceptScan(code) {
-  // Guarda la foto en color ANTES de que el preprocesado la pase a B/N.
+  try { navigator.vibrate && navigator.vibrate(80); } catch (_) {}
+
+  // Modo "Álbum": el código escaneado es un HUECO vacío. Solo lo anotamos como
+  // "no pegada" (sin tocar datos, para no borrar una que tengas suelta). Luego
+  // "Tengo el resto" marca como pegadas las que NO son hueco.
+  if (scanMode === 'album') {
+    const { prefix } = stickers.parseCode(code);
+    if (!prefix) { setToast(`No reconocí el equipo de ${code}.`, 'warn'); return; }
+    if (prefix !== albumTeam) { albumTeam = prefix; albumHoles.clear(); }
+    albumHoles.add(code);
+    const teamName = stickers.countryFor(prefix)?.name || prefix;
+    setToast(`📭 ${code}: hueco anotado (no la tienes pegada). ${teamName}: ${albumHoles.size}.`, 'warn');
+    renderAlbumBar();
+    return;
+  }
+
+  // Modo "¿Me falta?": NO agrega; solo informa el estado de esa lámina.
+  if (scanMode === 'check') {
+    const count = state.owned[code] || 0;
+    const inAlbum = store.isInAlbum(state.album, code);
+    if (!inAlbum) setToast(`❓ ${code} no está en el álbum.`, 'warn');
+    else if (count === 0) setToast(`✅ TE FALTA: ${code}. ¡Consíguela!`, 'ok');
+    else if (count === 1) setToast(`🟡 Ya la tienes: ${code}.`, 'dup');
+    else setToast(`🟡 Ya la tienes ×${count}: ${code} (repetida).`, 'dup');
+    return;
+  }
+
+  // Modo "Agregar": guarda la foto en color ANTES del preprocesado y suma.
   pendingScanThumb = camera.captureColorThumb($('video'));
   const result = await addSticker(code);
   if (result.status !== 'error' && result.code && pendingScanThumb) {
     stickers.setPhoto(result.code, pendingScanThumb);
     pendingScanThumb = null;
   }
-  try { navigator.vibrate && navigator.vibrate(80); } catch (_) {}
   showScanToast(result, true);
 }
 
-function showScanToast(result, withUndo = false) {
-  const fb = feedbackFor(result);
+// Muestra un mensaje en el toast del escáner. Con `undoResult` agrega "Deshacer".
+function setToast(msg, cls, undoResult = null) {
   const el = $('scanToast');
   el.hidden = false;
-  el.className = 'scan-toast ' + fb.cls;
-  el.textContent = fb.msg + ' ';
-  const undoable = withUndo && result.code && result.status !== 'error' && result.status !== 'empty';
-  if (undoable) {
+  el.className = 'scan-toast ' + (cls || '');
+  el.textContent = msg + ' ';
+  if (undoResult) {
     const btn = document.createElement('button');
     btn.className = 'toast-undo';
     btn.textContent = 'Deshacer';
     btn.addEventListener('click', async () => {
-      await data.remove(result.code);
-      if (result.status === 'new' || result.status === 'new-foreign') stickers.removePhoto(result.code);
+      await data.remove(undoResult.code);
+      if (undoResult.status === 'new' || undoResult.status === 'new-foreign') stickers.removePhoto(undoResult.code);
       renderStats();
-      cooldown.delete(result.code);
+      cooldown.delete(undoResult.code);
       el.className = 'scan-toast';
-      el.textContent = `↩️ ${result.code} deshecho.`;
+      el.textContent = `↩️ ${undoResult.code} deshecho.`;
     });
     el.appendChild(btn);
   }
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.hidden = true; }, undoable ? 4000 : 2500);
+  toastTimer = setTimeout(() => { el.hidden = true; }, undoResult ? 4000 : 2500);
+}
+
+function showScanToast(result, withUndo = false) {
+  const fb = feedbackFor(result);
+  const undoable = withUndo && result.code && result.status !== 'error' && result.status !== 'empty';
+  setToast(fb.msg, fb.cls, undoable ? result : null);
 }
 
 function setScanLive(msg) {
   const el = $('scanLive');
   el.hidden = !msg;
   el.textContent = msg;
+}
+
+const SCAN_HINTS = {
+  add: 'Centra el código del reverso (ej. KOR 7) en el recuadro',
+  check: 'Centra el código del reverso para ver si te falta',
+  album: 'Apuntá a un HUECO vacío del álbum (el código grande, ej. AUT 3)',
+};
+
+// Aplica el modo de escaneo actual: botón activo, recuadro (chico/álbum),
+// pista, estado en vivo y barra de álbum.
+function applyScanMode() {
+  document.querySelectorAll('#scanMode .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.mode === scanMode));
+  const box = document.querySelector('#tab-scan .scan-box');
+  if (box) box.classList.toggle('album', scanMode === 'album');
+  votes.clear(); cooldown.clear();
+  if (camera.isActive()) $('cameraHint').textContent = SCAN_HINTS[scanMode];
+  if (scanActive) {
+    setScanLive(scanMode === 'album' ? 'Apuntá a un hueco vacío…'
+      : scanMode === 'check' ? 'Apunta para ver si te falta…'
+      : 'Buscando código…');
+  }
+  renderAlbumBar();
+}
+
+// Barra del modo álbum: equipo en repaso + botón "Tengo el resto".
+function renderAlbumBar() {
+  const bar = $('albumBar');
+  if (scanMode !== 'album' || !albumTeam) { bar.hidden = true; bar.innerHTML = ''; return; }
+  const teamName = stickers.countryFor(albumTeam)?.name || albumTeam;
+  bar.hidden = false;
+  bar.innerHTML = '';
+  const info = document.createElement('span');
+  info.className = 'album-bar-info';
+  info.textContent = `${teamName}: ${albumHoles.size} hueco(s)`;
+  const btn = document.createElement('button');
+  btn.className = 'btn btn-primary';
+  btn.textContent = '✓ Tengo el resto';
+  btn.addEventListener('click', () => markRestOfTeam(albumTeam));
+  bar.append(info, btn);
+}
+
+// Marca como "tengo" (pegadas) todas las láminas del equipo que NO sean hueco.
+async function markRestOfTeam(prefix) {
+  const section = (state.album.sections || []).find((s) => store.normalizeCode(s.prefix || '') === prefix);
+  if (!section) { setToast(`No encuentro el equipo ${prefix} en el álbum.`, 'warn'); return; }
+  const from = Math.min(section.from, section.to);
+  const to = Math.max(section.from, section.to);
+  let added = 0;
+  for (let n = from; n <= to; n++) {
+    const code = store.normalizeCode((section.prefix || '') + n);
+    if (albumHoles.has(code)) continue;             // hueco: dejar como está
+    if ((state.owned[code] || 0) === 0) { await data.add(code); added++; }
+  }
+  renderStats();
+  const teamName = stickers.countryFor(prefix)?.name || prefix;
+  setToast(`✅ ${teamName}: marqué ${added} como pegadas. Huecos sin marcar: ${albumHoles.size}.`, 'ok');
+  albumTeam = null; albumHoles.clear();
+  renderAlbumBar();
 }
 
 // ---------- Estadísticas ----------
