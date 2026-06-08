@@ -72,28 +72,33 @@
 
     <!-- ====== LISTAS ====== -->
     <div class="tab-panel" id="tab-lists" hidden>
-      <div class="list-actions">
-        <button id="shareBtn" class="btn btn-secondary">Compartir resultado</button>
-        <button id="copyBtn" class="btn btn-ghost">Copiar</button>
+      <div class="collection-progress">
+        <div class="cp-top">
+          <span id="cpLabel">Colección</span>
+          <span id="cpPct">0%</span>
+        </div>
+        <div class="cp-bar"><div class="cp-fill" id="cpFill"></div></div>
       </div>
 
-      <details class="list-group" open>
-        <summary>Repetidas <span class="badge" id="repeatedCount">0</span></summary>
-        <div class="chips" id="repeatedList"></div>
-      </details>
+      <div class="seg seg-lists" id="listSeg">
+        <button class="seg-btn active" data-list="missing">Faltan <span class="seg-count" id="segMissing">0</span></button>
+        <button class="seg-btn" data-list="have">Tengo <span class="seg-count" id="segHave">0</span></button>
+        <button class="seg-btn" data-list="repeated">Repes <span class="seg-count" id="segRepeated">0</span></button>
+      </div>
 
-      <details class="list-group" open>
-        <summary>Faltantes <span class="badge" id="missingCount">0</span></summary>
-        <div class="filter-row">
-          <input type="search" id="missingFilter" placeholder="Buscar número..." />
-        </div>
-        <div class="chips" id="missingList"></div>
-      </details>
+      <div class="list-toolbar">
+        <input type="search" id="listFilter" placeholder="Buscar número…" />
+        <button id="shareBtn" class="icon-btn" aria-label="Compartir resultado">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
+        </button>
+        <button id="copyBtn" class="icon-btn" aria-label="Copiar resultado">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+        </button>
+      </div>
 
-      <details class="list-group">
-        <summary>Tengo <span class="badge" id="haveCount">0</span></summary>
-        <div class="chips" id="haveList"></div>
-      </details>
+      <div class="section-chips" id="sectionChips" hidden></div>
+
+      <div class="chips" id="listGrid"></div>
     </div>
 
     <!-- ====== TRUEQUE ====== -->

@@ -190,36 +190,85 @@ function renderStats() {
 }
 
 // ---------- Pestaña Listas ----------
-let missingFilterValue = '';
-const CARD_BATCH = 120; // cuántos cromos pintar por tanda (el resto, con "Ver más")
+let currentList = 'missing';   // 'missing' | 'have' | 'repeated'
+let listFilterValue = '';      // texto del buscador
+let selectedSection = null;    // sección activa del filtro (null = todas)
+const CARD_BATCH = 120;        // cuántos cromos pintar por tanda (el resto, con "Ver más")
 
+// Recalcula contadores, barra de progreso, chips de sección y la grilla activa.
 function renderLists() {
+  const { have, missing, repeated, foreign, total } = store.computeLists(state);
+
+  $('segMissing').textContent = missing.length;
+  $('segHave').textContent = have.length;
+  $('segRepeated').textContent = repeated.length + foreign.length;
+
+  const pct = total ? Math.round((have.length / total) * 100) : 0;
+  $('cpLabel').textContent = `Colección · ${have.length}/${total}`;
+  $('cpPct').textContent = `${pct}%`;
+  $('cpFill').style.width = `${pct}%`;
+
+  renderSectionChips();
+  renderActiveGrid(false);
+}
+
+// Construye los ítems de la categoría activa, aplica filtros y pinta la grilla.
+function renderActiveGrid(animate) {
   const { have, missing, repeated, foreign } = store.computeLists(state);
-  $('repeatedCount').textContent = repeated.length;
-  $('missingCount').textContent = missing.length;
-  $('haveCount').textContent = have.length;
+  let items, empty;
 
-  // Repetidas + fuera del set
-  const repItems = [
-    ...repeated.map((r) => ({ code: r.code, count: r.extra + 1, state: 'repeated', onTap: () => decrement(r.code) })),
-    ...foreign.map((f) => ({ code: f.code, count: f.count, state: 'foreign', onTap: () => decrement(f.code) })),
-  ];
-  renderCardGrid($('repeatedList'), repItems, 'Sin repetidas todavía.');
+  if (currentList === 'missing') {
+    items = missing.map((c) => ({ code: c, count: 0, state: 'missing',
+      onTap: async () => { await addSticker(c); renderLists(); } }));
+    empty = '¡No te falta ninguna! Álbum completo.';
+  } else if (currentList === 'have') {
+    items = have.map((c) => ({ code: c, count: state.owned[c], state: 'have', onTap: () => decrement(c) }));
+    empty = 'Aún no registras ninguna. Escanea o agrégalas a mano.';
+  } else {
+    items = [
+      ...repeated.map((r) => ({ code: r.code, count: r.extra + 1, state: 'repeated', onTap: () => decrement(r.code) })),
+      ...foreign.map((f) => ({ code: f.code, count: f.count, state: 'foreign', onTap: () => decrement(f.code) })),
+    ];
+    empty = 'Sin repetidas todavía. ¡A escanear!';
+  }
 
-  // Faltantes (con filtro)
-  const filtered = missingFilterValue
-    ? missing.filter((c) => c.includes(missingFilterValue.toUpperCase()))
-    : missing;
-  const missItems = filtered.map((c) => ({
-    code: c, count: 0, state: 'missing',
-    onTap: async () => { await addSticker(c); renderLists(); },
-  }));
-  renderCardGrid($('missingList'), missItems,
-    missing.length ? 'Nada coincide con el filtro.' : '¡No te falta ninguna! Álbum completo.');
+  // Filtro por sección
+  if (selectedSection) {
+    items = items.filter((it) => stickers.sectionFor(state.album, it.code) === selectedSection);
+  }
+  // Filtro por texto
+  const q = listFilterValue.toUpperCase();
+  const filtered = q ? items.filter((it) => it.code.includes(q)) : items;
+  const emptyMsg = (q || selectedSection) && items.length === 0
+    ? 'Nada coincide con el filtro.'
+    : filtered.length === 0 && items.length > 0
+      ? 'Nada coincide con el filtro.'
+      : empty;
 
-  // Tengo
-  const haveItems = have.map((c) => ({ code: c, count: state.owned[c], state: 'have', onTap: () => decrement(c) }));
-  renderCardGrid($('haveList'), haveItems, 'Aún no registras ninguna.');
+  const grid = $('listGrid');
+  renderCardGrid(grid, filtered, emptyMsg);
+  if (animate) { grid.style.animation = 'none'; void grid.offsetWidth; grid.style.animation = ''; }
+}
+
+// Chips para filtrar por sección (solo si el álbum tiene más de una).
+function renderSectionChips() {
+  const wrap = $('sectionChips');
+  const secs = state.album.sections || [];
+  if (selectedSection && !secs.includes(selectedSection)) selectedSection = null;
+  if (secs.length <= 1) { wrap.hidden = true; wrap.innerHTML = ''; selectedSection = null; return; }
+
+  wrap.hidden = false;
+  wrap.innerHTML = '';
+  const addChip = (label, section) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'sec-chip' + (selectedSection === section ? ' active' : '');
+    b.textContent = label;
+    b.addEventListener('click', () => { selectedSection = section; renderActiveGrid(true); renderSectionChips(); });
+    wrap.appendChild(b);
+  };
+  addChip('Todas', null);
+  secs.forEach((s) => addChip(s.name || s.prefix || 'Sección', s));
 }
 
 // Pinta una grilla de cromos por tandas, con botón "Ver más" para los restantes.
@@ -255,7 +304,14 @@ async function decrement(code) {
 }
 
 function setupLists() {
-  $('missingFilter').addEventListener('input', (e) => { missingFilterValue = e.target.value.trim(); renderLists(); });
+  document.querySelectorAll('#listSeg .seg-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      currentList = btn.dataset.list;
+      document.querySelectorAll('#listSeg .seg-btn').forEach((b) => b.classList.toggle('active', b === btn));
+      renderActiveGrid(true);
+    });
+  });
+  $('listFilter').addEventListener('input', (e) => { listFilterValue = e.target.value.trim(); renderActiveGrid(false); });
   $('shareBtn').addEventListener('click', shareResult);
   $('copyBtn').addEventListener('click', copyResult);
 }

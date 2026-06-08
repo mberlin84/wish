@@ -246,11 +246,69 @@ input:focus { outline: none; border-color: var(--grass); box-shadow: 0 0 0 3px v
 }
 .filter-row { margin: 12px 0 4px; }
 
+/* ---- Listas: progreso + conmutador + filtros ---- */
+.collection-progress { margin: 4px 0 12px; }
+.cp-top {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: .82rem; margin-bottom: 7px;
+}
+#cpLabel { color: var(--muted); font-weight: 600; }
+#cpPct { font-family: "Russo One", sans-serif; color: var(--grass); font-size: 1rem; }
+.cp-bar {
+  height: 9px; border-radius: 999px; overflow: hidden;
+  background: var(--bg-2); border: 1px solid var(--line);
+}
+.cp-fill {
+  height: 100%; width: 0%; border-radius: 999px;
+  background: linear-gradient(90deg, var(--grass-d), var(--grass));
+  transition: width .5s var(--ease);
+}
+
+.seg-lists { margin-bottom: 11px; }
+.seg-lists .seg-btn { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: .9rem; }
+.seg-count {
+  background: oklch(0.97 0.01 240 / 0.12); color: inherit;
+  border-radius: 999px; padding: 1px 8px; font-size: .74rem; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.seg-btn.active .seg-count { background: oklch(0.20 0.05 150 / 0.35); }
+
+.list-toolbar { display: flex; gap: 8px; align-items: stretch; margin-bottom: 10px; }
+.list-toolbar input { flex: 1; }
+.icon-btn {
+  flex: 0 0 auto; width: 46px; border-radius: 11px;
+  background: var(--card); border: 1px solid var(--line-2); color: var(--text);
+  display: grid; place-items: center; cursor: pointer;
+  transition: background .15s var(--ease), color .15s var(--ease);
+}
+.icon-btn svg { width: 19px; height: 19px; }
+.icon-btn:active { background: var(--card-2); }
+.icon-btn:focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }
+
+.section-chips {
+  display: flex; gap: 7px; margin-bottom: 11px;
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; padding-bottom: 2px;
+}
+.section-chips::-webkit-scrollbar { display: none; }
+.sec-chip {
+  flex: 0 0 auto; background: var(--card); border: 1px solid var(--line-2);
+  color: var(--muted); border-radius: 999px; padding: 7px 13px;
+  font-size: .82rem; font-weight: 600; cursor: pointer; white-space: nowrap;
+  font-family: inherit; transition: background .15s var(--ease), color .15s var(--ease), border-color .15s var(--ease);
+}
+.sec-chip.active { background: var(--grass); color: var(--grass-ink); border-color: var(--grass); }
+
 /* Grid de cromos */
 .chips {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(86px, 1fr));
-  gap: 9px; margin-top: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 8px; margin-top: 2px;
+}
+#listGrid { animation: grid-in .26s var(--ease); }
+@keyframes grid-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 .chip-empty {
   grid-column: 1 / -1; color: var(--muted); font-size: .9rem;
