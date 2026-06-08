@@ -2,13 +2,12 @@
 
 const KEY = 'misLaminas_v1';
 
-// Set por defecto: Mundial 2026 (editable; el conteo oficial aún no está cerrado).
+// Set por defecto: Mundial 2026 — 980 láminas (números corridos 1 a 980).
 export function defaultAlbum() {
   return {
     name: 'Mundial 2026',
     sections: [
-      { id: 'base', name: 'Base', prefix: '', from: 1, to: 700 },
-      { id: 'esp', name: 'Especiales', prefix: 'E', from: 1, to: 30 },
+      { id: 'base', name: 'Láminas', prefix: '', from: 1, to: 980 },
     ],
   };
 }

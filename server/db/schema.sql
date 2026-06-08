@@ -45,14 +45,10 @@ CREATE TABLE IF NOT EXISTS album_sections (
   sort_order INTEGER NOT NULL DEFAULT 0
 );
 
--- Semilla del set Mundial 2026 (editable; el conteo oficial aún no está cerrado).
+-- Semilla del set Mundial 2026: 980 láminas (números corridos 1 a 980).
 INSERT INTO album_sections (name, prefix, from_n, to_n, sort_order)
-SELECT 'Base', '', 1, 700, 1
+SELECT 'Láminas', '', 1, 980, 1
 WHERE NOT EXISTS (SELECT 1 FROM album_sections);
-
-INSERT INTO album_sections (name, prefix, from_n, to_n, sort_order)
-SELECT 'Especiales', 'E', 1, 30, 2
-WHERE NOT EXISTS (SELECT 1 FROM album_sections WHERE prefix = 'E');
 
 -- Login por enlace mágico (magic link): tokens de un solo uso con vencimiento.
 CREATE TABLE IF NOT EXISTS login_tokens (

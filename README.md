@@ -10,8 +10,8 @@ del celular**, con **cuentas de usuario** y **trueque por cercanía**.
   hacer trueque cerca de ti**: quién tiene lo que te falta y a quién le sirven tus
   repetidas.
 
-> Pensada para el **Mundial 2026 (FIFA)**. El set es **editable** porque el conteo
-> oficial aún no está cerrado.
+> Pensada para el **Mundial 2026 (FIFA)**. El set por defecto trae **980 láminas**
+> (números corridos 1 a 980) y es **editable** en *Cuenta → Configurar álbum*.
 
 ## Arquitectura
 
