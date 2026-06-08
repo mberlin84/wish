@@ -2,12 +2,71 @@
 
 const KEY = 'misLaminas_v1';
 
-// Set por defecto: Mundial 2026 — 980 láminas (números corridos 1 a 980).
+// Selecciones del Mundial 2026 (48). Código FIFA, nombre en español e ISO-2
+// para la bandera (flagcdn). Es la fuente única: el álbum y stickers.js la usan.
+export const WC2026_TEAMS = [
+  { code: 'ALG', name: 'Argelia', iso2: 'dz' },
+  { code: 'ARG', name: 'Argentina', iso2: 'ar' },
+  { code: 'AUS', name: 'Australia', iso2: 'au' },
+  { code: 'AUT', name: 'Austria', iso2: 'at' },
+  { code: 'BEL', name: 'Bélgica', iso2: 'be' },
+  { code: 'BIH', name: 'Bosnia y Herzegovina', iso2: 'ba' },
+  { code: 'BRA', name: 'Brasil', iso2: 'br' },
+  { code: 'CAN', name: 'Canadá', iso2: 'ca' },
+  { code: 'CPV', name: 'Cabo Verde', iso2: 'cv' },
+  { code: 'COL', name: 'Colombia', iso2: 'co' },
+  { code: 'COD', name: 'RD del Congo', iso2: 'cd' },
+  { code: 'CRO', name: 'Croacia', iso2: 'hr' },
+  { code: 'CUW', name: 'Curazao', iso2: 'cw' },
+  { code: 'CZE', name: 'Chequia', iso2: 'cz' },
+  { code: 'ECU', name: 'Ecuador', iso2: 'ec' },
+  { code: 'EGY', name: 'Egipto', iso2: 'eg' },
+  { code: 'ENG', name: 'Inglaterra', iso2: 'gb-eng' },
+  { code: 'FRA', name: 'Francia', iso2: 'fr' },
+  { code: 'GER', name: 'Alemania', iso2: 'de' },
+  { code: 'GHA', name: 'Ghana', iso2: 'gh' },
+  { code: 'HAI', name: 'Haití', iso2: 'ht' },
+  { code: 'IRN', name: 'Irán', iso2: 'ir' },
+  { code: 'IRQ', name: 'Irak', iso2: 'iq' },
+  { code: 'CIV', name: 'Costa de Marfil', iso2: 'ci' },
+  { code: 'JPN', name: 'Japón', iso2: 'jp' },
+  { code: 'JOR', name: 'Jordania', iso2: 'jo' },
+  { code: 'MEX', name: 'México', iso2: 'mx' },
+  { code: 'MAR', name: 'Marruecos', iso2: 'ma' },
+  { code: 'NED', name: 'Países Bajos', iso2: 'nl' },
+  { code: 'NZL', name: 'Nueva Zelanda', iso2: 'nz' },
+  { code: 'NOR', name: 'Noruega', iso2: 'no' },
+  { code: 'PAN', name: 'Panamá', iso2: 'pa' },
+  { code: 'PAR', name: 'Paraguay', iso2: 'py' },
+  { code: 'POR', name: 'Portugal', iso2: 'pt' },
+  { code: 'QAT', name: 'Catar', iso2: 'qa' },
+  { code: 'KSA', name: 'Arabia Saudita', iso2: 'sa' },
+  { code: 'SCO', name: 'Escocia', iso2: 'gb-sct' },
+  { code: 'SEN', name: 'Senegal', iso2: 'sn' },
+  { code: 'RSA', name: 'Sudáfrica', iso2: 'za' },
+  { code: 'KOR', name: 'Corea del Sur', iso2: 'kr' },
+  { code: 'ESP', name: 'España', iso2: 'es' },
+  { code: 'SWE', name: 'Suecia', iso2: 'se' },
+  { code: 'SUI', name: 'Suiza', iso2: 'ch' },
+  { code: 'TUN', name: 'Túnez', iso2: 'tn' },
+  { code: 'TUR', name: 'Turquía', iso2: 'tr' },
+  { code: 'URU', name: 'Uruguay', iso2: 'uy' },
+  { code: 'USA', name: 'Estados Unidos', iso2: 'us' },
+  { code: 'UZB', name: 'Uzbekistán', iso2: 'uz' },
+];
+
+// Álbum oficial Panini Mundial 2026: 48 selecciones × 20 (escudo + foto de
+// equipo + 18 jugadores), numeradas por equipo (KOR 1…KOR 20), más 20 láminas
+// especiales (Introducción + FIFA Museum). Total 980. Todo editable.
 export function defaultAlbum() {
+  const teams = WC2026_TEAMS.map((t) => ({
+    id: t.code.toLowerCase(), name: t.name, prefix: t.code, from: 1, to: 20,
+  }));
   return {
     name: 'Mundial 2026',
     sections: [
-      { id: 'base', name: 'Láminas', prefix: '', from: 1, to: 980 },
+      ...teams,
+      { id: 'fwc', name: 'Especiales (Intro + FIFA Museum)', prefix: 'FWC', from: 1, to: 20 },
     ],
   };
 }

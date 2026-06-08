@@ -52,10 +52,10 @@ function switchTab(tab) {
   if (tab === 'lists') renderLists();
   if (tab === 'account') renderAlbumEditor();
   if (tab === 'chat') renderChatView();
-  if (tab !== 'scan' && camera.isActive()) {
-    camera.stop($('video'));
-    showCameraControls(false);
-  }
+  // La pestaña Escanear ocupa la pantalla completa (sin scroll). Al salir,
+  // apaga la cámara y el bucle de lectura.
+  document.body.classList.toggle('scan-active', tab === 'scan');
+  if (tab !== 'scan' && camera.isActive()) stopScanning();
 }
 function setupTabs() {
   document.querySelectorAll('.tab-btn').forEach((btn) => {
@@ -93,89 +93,133 @@ function feedbackFor(result) {
   }
 }
 
-// ---------- Pestaña Escanear ----------
+// ---------- Pestaña Escanear (automático, apuntar y leer) ----------
+let scanActive = false;     // bucle de lectura en marcha
+let ocrBusy = false;        // hay un recognize() en curso
+let validCodes = null;      // Set de códigos del álbum (para corregir lecturas)
+const votes = new Map();    // código -> puntaje acumulado entre cuadros
+const cooldown = new Map(); // código -> timestamp hasta el que se ignora
+let emptyStreak = 0;        // cuadros seguidos sin código (para resetear votos)
+let toastTimer = null;
+
 function showCameraControls(active) {
   $('startCamBtn').hidden = active;
-  $('scanBtn').hidden = !active;
   $('stopCamBtn').hidden = !active;
 }
 
 function setupScan() {
-  $('startCamBtn').addEventListener('click', async () => {
-    try {
-      setOcrStatus('Activando cámara…');
-      await camera.start($('video'));
-      showCameraControls(true);
-      setOcrStatus('');
-    } catch (e) {
-      setOcrStatus('No se pudo abrir la cámara: ' + e.message);
-    }
-  });
-  $('stopCamBtn').addEventListener('click', () => {
-    camera.stop($('video'));
-    showCameraControls(false);
-  });
-  $('scanBtn').addEventListener('click', onScan);
-
-  $('addBtn').addEventListener('click', async () => {
-    const result = await addSticker($('codeInput').value);
-    showConfirmFeedback(result);
-    // Asocia la foto capturada a este código (la imagen real de la lámina).
-    if (result.status !== 'error' && result.code && pendingScanThumb) {
-      stickers.setPhoto(result.code, pendingScanThumb);
-      pendingScanThumb = null;
-    }
-    if (result.status !== 'error') $('codeInput').value = '';
-  });
-  $('codeInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('addBtn').click(); });
+  $('startCamBtn').addEventListener('click', startScanning);
+  $('stopCamBtn').addEventListener('click', stopScanning);
 
   $('manualAddBtn').addEventListener('click', async () => {
     const result = await addSticker($('manualInput').value);
-    setOcrStatus(feedbackFor(result).msg);
+    showScanToast(result);
     if (result.status !== 'error') $('manualInput').value = '';
     $('manualInput').focus();
   });
   $('manualInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('manualAddBtn').click(); });
 }
 
-async function onScan() {
+async function startScanning() {
   try {
-    // Guarda la foto en color ANTES de que el preprocesado OCR la convierta a B/N.
-    pendingScanThumb = camera.captureColorThumb($('video'));
-    camera.captureScanRegion($('video'), $('captureCanvas'));
-    setOcrStatus('Leyendo número…');
-    $('scanBtn').disabled = true;
-    const res = await ocr.recognize($('captureCanvas'), (m) => {
-      if (m.status === 'recognizing text') setOcrStatus(`Leyendo número… ${Math.round((m.progress || 0) * 100)}%`);
-      else if (m.status && m.status.startsWith('loading')) setOcrStatus('Preparando OCR (primera vez)…');
-    });
-    setOcrStatus(res.candidate
-      ? `Detectado: "${res.candidate}" (confianza ${res.confidence}%)`
-      : 'No se reconoció un número claro. Corrígelo abajo.');
-    showConfirm(res.candidate);
+    setScanLive('Activando cámara…');
+    await camera.start($('video'));
+    validCodes = store.albumCodeSet(state.album); // se reconstruye en cada arranque
+    votes.clear(); cooldown.clear(); emptyStreak = 0;
+    showCameraControls(true);
+    $('cameraHint').textContent = 'Centra solo el código del reverso (ej. KOR 7) dentro del recuadro';
+    scanActive = true;
+    setScanLive('Buscando código…');
+    scanLoop();
   } catch (e) {
-    setOcrStatus('Error al escanear: ' + e.message);
-  } finally {
-    $('scanBtn').disabled = false;
+    setScanLive('No se pudo abrir la cámara: ' + e.message);
   }
 }
 
-function showConfirm(candidate) {
-  $('confirmBox').hidden = false;
-  $('codeInput').value = candidate || '';
-  $('confirmFeedback').textContent = '';
-  $('confirmFeedback').className = 'confirm-feedback';
-  $('codeInput').focus();
-  $('codeInput').select();
+function stopScanning() {
+  scanActive = false;
+  camera.stop($('video'));
+  showCameraControls(false);
+  $('cameraHint').textContent = 'Activa la cámara y encuadra el código del reverso (ej. KOR 8)';
+  setScanLive('');
 }
-function showConfirmFeedback(result) {
+
+// Lee un cuadro, lo interpreta y, sin solaparse, se reprograma.
+async function scanLoop() {
+  if (!scanActive || !camera.isActive()) return;
+  if (!ocrBusy && document.visibilityState === 'visible') {
+    ocrBusy = true;
+    try {
+      camera.captureScanRegion($('video'), $('captureCanvas'));
+      const res = await ocr.recognize($('captureCanvas'));
+      if (scanActive) handleReading(res);
+    } catch (_) { /* cuadro malo: seguir */ }
+    finally { ocrBusy = false; }
+  }
+  if (scanActive) setTimeout(scanLoop, 350);
+}
+
+// Acumula votos por código entre cuadros; cuando uno se confirma, lo agrega.
+function handleReading(res) {
+  const m = ocr.bestCode(res.text, validCodes);
+  if (!m || !m.code) {
+    if (++emptyStreak >= 3) { votes.clear(); setScanLive('Buscando código…'); }
+    return;
+  }
+  emptyStreak = 0;
+  const code = m.code;
+  const now = performance.now();
+  if (now < (cooldown.get(code) || 0)) return; // recién agregado: esperar
+
+  setScanLive(m.valid ? `Detectado ${code}` : `¿"${code}"? acércate`);
+  const score = (votes.get(code) || 0) + (m.cost === 0 ? 2 : 1);
+  votes.set(code, score);
+  if (score >= (m.valid ? 3 : 6)) {
+    votes.clear();
+    cooldown.set(code, now + 3000); // no re-agregar la misma mientras esté en cuadro
+    acceptScan(code);
+  }
+}
+
+async function acceptScan(code) {
+  // Guarda la foto en color ANTES de que el preprocesado la pase a B/N.
+  pendingScanThumb = camera.captureColorThumb($('video'));
+  const result = await addSticker(code);
+  if (result.status !== 'error' && result.code && pendingScanThumb) {
+    stickers.setPhoto(result.code, pendingScanThumb);
+    pendingScanThumb = null;
+  }
+  try { navigator.vibrate && navigator.vibrate(80); } catch (_) {}
+  showScanToast(result, true);
+}
+
+function showScanToast(result, withUndo = false) {
   const fb = feedbackFor(result);
-  const el = $('confirmFeedback');
-  el.textContent = fb.msg;
-  el.className = 'confirm-feedback ' + fb.cls;
+  const el = $('scanToast');
+  el.hidden = false;
+  el.className = 'scan-toast ' + fb.cls;
+  el.textContent = fb.msg + ' ';
+  const undoable = withUndo && result.code && result.status !== 'error' && result.status !== 'empty';
+  if (undoable) {
+    const btn = document.createElement('button');
+    btn.className = 'toast-undo';
+    btn.textContent = 'Deshacer';
+    btn.addEventListener('click', async () => {
+      await data.remove(result.code);
+      if (result.status === 'new' || result.status === 'new-foreign') stickers.removePhoto(result.code);
+      renderStats();
+      cooldown.delete(result.code);
+      el.className = 'scan-toast';
+      el.textContent = `↩️ ${result.code} deshecho.`;
+    });
+    el.appendChild(btn);
+  }
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, undoable ? 4000 : 2500);
 }
-function setOcrStatus(msg) {
-  const el = $('ocrStatus');
+
+function setScanLive(msg) {
+  const el = $('scanLive');
   el.hidden = !msg;
   el.textContent = msg;
 }
@@ -222,12 +266,12 @@ function renderActiveGrid(animate) {
       onTap: async () => { await addSticker(c); renderLists(); } }));
     empty = '¡No te falta ninguna! Álbum completo.';
   } else if (currentList === 'have') {
-    items = have.map((c) => ({ code: c, count: state.owned[c], state: 'have', onTap: () => decrement(c) }));
+    items = have.map((c) => ({ code: c, count: state.owned[c], state: 'have', onTap: () => openCardModal(c) }));
     empty = 'Aún no registras ninguna. Escanea o agrégalas a mano.';
   } else {
     items = [
-      ...repeated.map((r) => ({ code: r.code, count: r.extra + 1, state: 'repeated', onTap: () => decrement(r.code) })),
-      ...foreign.map((f) => ({ code: f.code, count: f.count, state: 'foreign', onTap: () => decrement(f.code) })),
+      ...repeated.map((r) => ({ code: r.code, count: r.extra + 1, state: 'repeated', onTap: () => openCardModal(r.code) })),
+      ...foreign.map((f) => ({ code: f.code, count: f.count, state: 'foreign', onTap: () => openCardModal(f.code) })),
     ];
     empty = 'Sin repetidas todavía. ¡A escanear!';
   }
@@ -301,6 +345,92 @@ async function decrement(code) {
   await data.remove(code);
   renderStats();
   renderLists();
+}
+
+// ---------- Detalle de tarjeta (modal) ----------
+// Tocar una lámina abre su tarjeta grande; desde ahí se quita, se suma o se
+// captura/cambia la foto del FRENTE (jugador) — que está al otro lado del código.
+let modalCode = null;
+
+function openCardModal(code) {
+  modalCode = code;
+  renderCardModal();
+  stopModalPhoto(); // asegura que la vista de cámara empiece oculta
+  $('cardModal').hidden = false;
+}
+
+function renderCardModal() {
+  const code = modalCode;
+  const count = state.owned[code] || 0;
+  const inAlbum = store.isInAlbum(state.album, code);
+  const st = !inAlbum ? 'foreign' : count > 1 ? 'repeated' : count >= 1 ? 'have' : 'missing';
+
+  const holder = $('cardModalCard');
+  holder.innerHTML = '';
+  holder.appendChild(stickers.createStickerCard(code, { count, state: st, album: state.album }));
+
+  const label = count > 1 ? `Tienes ${count} (repetidas)`
+    : count === 1 ? 'La tienes'
+    : inAlbum ? 'Te falta' : 'No pertenece al álbum';
+  $('cardModalInfo').textContent = `${code} · ${label}`;
+
+  const actions = $('cardModalActions');
+  actions.innerHTML = '';
+  const addBtn = (txt, cls, fn) => {
+    const b = document.createElement('button');
+    b.className = `btn ${cls}`;
+    b.textContent = txt;
+    b.addEventListener('click', fn);
+    actions.appendChild(b);
+  };
+  addBtn(stickers.getPhoto(code) ? '📷 Cambiar foto' : '📷 Capturar foto', 'btn-secondary', startModalPhoto);
+  if (count > 0) addBtn('− Quitar una', 'btn-ghost', () => modalChange(-1));
+  addBtn(count > 0 ? '+ Tengo otra' : '+ Agregar', 'btn-primary', () => modalChange(1));
+}
+
+async function modalChange(delta) {
+  if (delta > 0) await data.add(modalCode); else await data.remove(modalCode);
+  renderStats();
+  renderCardModal();
+}
+
+async function startModalPhoto() {
+  try {
+    $('cardModalActions').hidden = true;
+    $('cardModalCam').hidden = false;
+    await camera.start($('cardVideo'), { zoom: false }); // foto del cromo completo, sin zoom
+  } catch (e) {
+    $('cardModalCam').hidden = true;
+    $('cardModalActions').hidden = false;
+    $('cardModalInfo').textContent = 'No se pudo abrir la cámara: ' + e.message;
+  }
+}
+
+function stopModalPhoto() {
+  if (camera.isActive()) camera.stop($('cardVideo'));
+  $('cardModalCam').hidden = true;
+  $('cardModalActions').hidden = false;
+}
+
+function snapModalPhoto() {
+  const thumb = camera.captureCardPhoto($('cardVideo'));
+  if (thumb) stickers.setPhoto(modalCode, thumb);
+  stopModalPhoto();
+  renderCardModal(); // muestra ya la foto recién tomada
+}
+
+function closeCardModal() {
+  stopModalPhoto();
+  $('cardModal').hidden = true;
+  modalCode = null;
+  renderLists();
+}
+
+function setupCardModal() {
+  $('cardModalClose').addEventListener('click', closeCardModal);
+  $('cardModalBackdrop').addEventListener('click', closeCardModal);
+  $('cardSnapBtn').addEventListener('click', snapModalPhoto);
+  $('cardCamCancel').addEventListener('click', stopModalPhoto);
 }
 
 function setupLists() {
@@ -782,6 +912,7 @@ async function init() {
   setupData();
   setupTrade();
   setupChat();
+  setupCardModal();
 
   // Procesa el enlace mágico (guarda el token) ANTES de decidir si hay sesión.
   const authError = consumeAuthHash();
@@ -799,7 +930,10 @@ async function init() {
   }
   renderAuthState();
   renderStats();
+  // Aplica el estado de la pestaña inicial (incl. el modo pantalla-completa del
+  // escáner). Si llegó un enlace mágico, abre Cuenta en su lugar.
   if (authError) { switchTab('account'); setAuthFeedback(authError, 'warn'); }
+  else { switchTab('scan'); }
   setupServiceWorker();
 }
 

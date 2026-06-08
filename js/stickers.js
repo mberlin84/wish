@@ -2,7 +2,7 @@
 // en una "carta de cromo" con número estilo dorsal, color por sección, bandera
 // (si la sección es de un país) y, si existe, la foto real capturada con la cámara.
 
-import { normalizeCode } from './store.js';
+import { normalizeCode, WC2026_TEAMS } from './store.js';
 
 // ---- Fotos capturadas por el usuario (legalmente limpias: son SU foto) ----
 // Se guardan aparte de la colección para no arriesgar el cupo de esa clave.
@@ -55,29 +55,13 @@ export function parseCode(code) {
   return { prefix: m[1], num: parseInt(m[2], 10), raw: c };
 }
 
-// ---- Mapa de selecciones: código FIFA (3 letras) -> { país, ISO-2 } ----
-// Sirve como "mejora automática": si el álbum se configura por países
-// (formato real Panini, p. ej. sección ARG 1-20), aparece la bandera sola.
-const COUNTRIES = {
-  ARG: ['Argentina', 'ar'], BRA: ['Brasil', 'br'], FRA: ['Francia', 'fr'],
-  ESP: ['España', 'es'], ENG: ['Inglaterra', 'gb-eng'], GER: ['Alemania', 'de'],
-  POR: ['Portugal', 'pt'], NED: ['Países Bajos', 'nl'], BEL: ['Bélgica', 'be'],
-  ITA: ['Italia', 'it'], CRO: ['Croacia', 'hr'], URU: ['Uruguay', 'uy'],
-  COL: ['Colombia', 'co'], MEX: ['México', 'mx'], USA: ['Estados Unidos', 'us'],
-  CAN: ['Canadá', 'ca'], JPN: ['Japón', 'jp'], KOR: ['Corea del Sur', 'kr'],
-  AUS: ['Australia', 'au'], MAR: ['Marruecos', 'ma'], SEN: ['Senegal', 'sn'],
-  GHA: ['Ghana', 'gh'], NGA: ['Nigeria', 'ng'], CMR: ['Camerún', 'cm'],
-  EGY: ['Egipto', 'eg'], CIV: ['Costa de Marfil', 'ci'], TUN: ['Túnez', 'tn'],
-  ALG: ['Argelia', 'dz'], SUI: ['Suiza', 'ch'], DEN: ['Dinamarca', 'dk'],
-  POL: ['Polonia', 'pl'], SRB: ['Serbia', 'rs'], SWE: ['Suecia', 'se'],
-  AUT: ['Austria', 'at'], UKR: ['Ucrania', 'ua'], WAL: ['Gales', 'gb-wls'],
-  SCO: ['Escocia', 'gb-sct'], ECU: ['Ecuador', 'ec'], PER: ['Perú', 'pe'],
-  CHI: ['Chile', 'cl'], PAR: ['Paraguay', 'py'], VEN: ['Venezuela', 've'],
-  BOL: ['Bolivia', 'bo'], CRC: ['Costa Rica', 'cr'], PAN: ['Panamá', 'pa'],
-  HON: ['Honduras', 'hn'], JAM: ['Jamaica', 'jm'], QAT: ['Catar', 'qa'],
-  KSA: ['Arabia Saudita', 'sa'], IRN: ['Irán', 'ir'], IRQ: ['Irak', 'iq'],
-  UAE: ['Emiratos Árabes', 'ae'], CHN: ['China', 'cn'], NZL: ['Nueva Zelanda', 'nz'],
-};
+// ---- Mapa de selecciones: código FIFA (3 letras) -> [país, ISO-2] ----
+// Generado desde la lista única WC2026_TEAMS (store.js). Si el álbum se
+// configura por países (formato real Panini, p. ej. sección KOR 1-20),
+// la carta muestra la bandera sola.
+const COUNTRIES = Object.fromEntries(
+  WC2026_TEAMS.map((t) => [t.code, [t.name, t.iso2]]),
+);
 
 export function countryFor(prefix) {
   const info = COUNTRIES[prefix];

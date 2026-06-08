@@ -40,34 +40,25 @@
         <video id="video" playsinline muted></video>
         <div class="scan-box" aria-hidden="true"></div>
         <canvas id="captureCanvas" hidden></canvas>
-        <div class="camera-hint" id="cameraHint">Encuadra el número de la lámina dentro del recuadro</div>
+        <div class="camera-hint" id="cameraHint">Activa la cámara y encuadra el código del reverso (ej. KOR 8)</div>
+        <div class="scan-live" id="scanLive" hidden></div>
       </div>
 
       <div class="camera-controls">
         <button id="startCamBtn" class="btn btn-primary">Activar cámara</button>
-        <button id="scanBtn" class="btn btn-primary" hidden>Escanear número</button>
         <button id="stopCamBtn" class="btn btn-ghost" hidden>Apagar cámara</button>
       </div>
 
-      <div class="ocr-status" id="ocrStatus" hidden></div>
+      <div class="scan-toast" id="scanToast" hidden></div>
 
-      <div class="confirm-box" id="confirmBox" hidden>
-        <label for="codeInput">Número detectado (puedes corregirlo):</label>
+      <details class="manual-add" id="manualBox">
+        <summary>Carga manual</summary>
         <div class="confirm-row">
-          <input type="text" id="codeInput" inputmode="latin" autocomplete="off" placeholder="ej. 273" />
-          <button id="addBtn" class="btn btn-primary">Agregar</button>
-        </div>
-        <p class="confirm-feedback" id="confirmFeedback"></p>
-      </div>
-
-      <div class="manual-add">
-        <p class="manual-title">Carga manual rápida</p>
-        <div class="confirm-row">
-          <input type="text" id="manualInput" inputmode="latin" autocomplete="off" placeholder="Escribe un número y Enter" />
+          <input type="text" id="manualInput" inputmode="latin" autocomplete="off" placeholder="ej. KOR8 y Enter" />
           <button id="manualAddBtn" class="btn btn-secondary">Agregar</button>
         </div>
-        <p class="hint">Cada vez que agregas un número que ya tenías, se marca como <strong>repetida</strong>.</p>
-      </div>
+        <p class="hint">Si agregas una que ya tenías, se marca como <strong>repetida</strong>.</p>
+      </details>
     </div>
 
     <!-- ====== LISTAS ====== -->
@@ -233,6 +224,32 @@
       <span>Cuenta</span>
     </button>
   </nav>
+
+  <!-- ====== DETALLE DE TARJETA ====== -->
+  <div class="modal" id="cardModal" hidden>
+    <div class="modal-backdrop" id="cardModalBackdrop"></div>
+    <div class="modal-sheet" role="dialog" aria-modal="true" aria-label="Detalle de la lámina">
+      <button class="modal-close" id="cardModalClose" aria-label="Cerrar">✕</button>
+
+      <div class="modal-card" id="cardModalCard"></div>
+      <p class="modal-info" id="cardModalInfo"></p>
+
+      <!-- Captura de la foto del frente (jugador) -->
+      <div class="modal-cam" id="cardModalCam" hidden>
+        <div class="modal-cam-view">
+          <video id="cardVideo" playsinline muted></video>
+          <div class="scan-box card-guide" aria-hidden="true"></div>
+        </div>
+        <p class="hint">Encuadra el FRENTE de la lámina (el jugador) y toca «Tomar foto».</p>
+        <div class="modal-cam-controls">
+          <button class="btn btn-primary" id="cardSnapBtn">Tomar foto</button>
+          <button class="btn btn-ghost" id="cardCamCancel">Cancelar</button>
+        </div>
+      </div>
+
+      <div class="modal-actions" id="cardModalActions"></div>
+    </div>
+  </div>
 
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script type="module" src="js/app.js"></script>
