@@ -1,0 +1,36 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mislaminas
+      POSTGRES_PASSWORD: mislaminas
+      POSTGRES_DB: mislaminas
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mislaminas -d mislaminas"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    # Descomenta si quieres acceder a Postgres desde el host.
+    # ports:
+    #   - "5432:5432"
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://mislaminas:mislaminas@db:5432/mislaminas
+      DATABASE_SSL: "false"
+      JWT_SECRET: cambia-esto-por-una-cadena-larga-y-secreta
+      PORT: "3000"
+      ALBUM_NAME: Mundial 2026
+    ports:
+      # Cambia el puerto del host con: HOST_PORT=8080 docker compose up
+      - "${HOST_PORT:-3000}:3000"
+    restart: unless-stopped
+
+volumes:
+  db_data:

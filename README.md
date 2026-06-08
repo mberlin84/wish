@@ -29,6 +29,23 @@ Frontend (PWA, estático)            Backend (Node + Express)         Base de da
 
 ## Puesta en marcha
 
+### Opción A) Docker (todo incluido, recomendado)
+Levanta Postgres + backend + PWA con un solo comando (no necesitas instalar Node
+ni Postgres). Requiere Docker con Compose.
+
+```bash
+docker compose up --build      # construye y arranca; aplica la migración solo
+```
+Abre `http://localhost:3000`.
+
+- Cambia el puerto del host: `HOST_PORT=8080 docker compose up`
+- Detener: `docker compose down` · borrar también la base: `docker compose down -v`
+- La migración (crear tablas + sembrar el set 2026) se ejecuta automáticamente al
+  arrancar el contenedor `app`. Edita las variables (`JWT_SECRET`, etc.) en
+  `docker-compose.yml`.
+
+### Opción B) Manual
+
 ### 1) Base de datos
 Necesitas un PostgreSQL (local o en la nube). Crea una base de datos vacía, por
 ejemplo `mislaminas`.
