@@ -289,30 +289,24 @@ function flashCopy(msg) {
 
 // ---------- Cuenta: autenticación ----------
 function setupAuth() {
-  document.querySelectorAll('.seg-btn').forEach((b) => b.addEventListener('click', () => {
-    document.querySelectorAll('.seg-btn').forEach((x) => x.classList.toggle('active', x === b));
-    const mode = b.dataset.auth;
-    $('loginForm').hidden = mode !== 'login';
-    $('registerForm').hidden = mode !== 'register';
-    setAuthFeedback('');
-  }));
-
-  $('loginForm').addEventListener('submit', async (e) => {
+  $('magicForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const email = $('magicEmail').value.trim();
+    const btn = $('magicBtn');
+    btn.disabled = true;
+    setAuthFeedback('Enviando enlace…');
     try {
-      const r = await api.login({ email: $('loginEmail').value, password: $('loginPassword').value });
-      await onAuthSuccess(r);
-    } catch (err) { setAuthFeedback(err.message, 'warn'); }
-  });
-
-  $('registerForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    try {
-      const r = await api.register({
-        username: $('regUsername').value, email: $('regEmail').value, password: $('regPassword').value,
-      });
-      await onAuthSuccess(r);
-    } catch (err) { setAuthFeedback(err.message, 'warn'); }
+      const r = await api.requestMagicLink(email);
+      if (r.dev) {
+        setAuthFeedback('Enlace generado (modo desarrollo): revisa los logs del servidor para abrirlo.', 'ok');
+      } else {
+        setAuthFeedback(`Listo. Te enviamos un enlace a ${email}. Ábrelo en este dispositivo para entrar.`, 'ok');
+      }
+    } catch (err) {
+      setAuthFeedback(err.message, 'warn');
+    } finally {
+      btn.disabled = false;
+    }
   });
 
   $('logoutBtn').addEventListener('click', () => {
@@ -333,15 +327,28 @@ function setupAuth() {
   });
 }
 
-async function onAuthSuccess(r) {
-  setToken(r.token);
-  currentUser = r.user;
-  setAuthFeedback('');
-  await loadFromServer();
-  renderAuthState();
-  renderStats();
-  startChatPolling();
-  updateUnreadBadge();
+// Lee el token (o el error) que el enlace mágico dejó en el fragmento de la URL.
+// Devuelve un mensaje de error para mostrar tras renderizar, o null.
+function consumeAuthHash() {
+  const hash = location.hash || '';
+  const clean = () => history.replaceState(null, '', location.pathname + location.search);
+  if (hash.startsWith('#session=')) {
+    const token = decodeURIComponent(hash.slice('#session='.length));
+    clean();
+    if (token) setToken(token);
+    return null;
+  }
+  if (hash.startsWith('#login=')) {
+    const reason = hash.slice('#login='.length);
+    clean();
+    return {
+      expired: 'El enlace venció (dura 15 min). Pide uno nuevo.',
+      used: 'Ese enlace ya se usó. Pide uno nuevo.',
+      invalid: 'Enlace inválido. Pide uno nuevo.',
+      error: 'No se pudo validar el enlace. Intenta otra vez.',
+    }[reason] || 'No se pudo entrar con el enlace.';
+  }
+  return null;
 }
 
 function setAuthFeedback(msg, cls = '') {
@@ -720,6 +727,9 @@ async function init() {
   setupTrade();
   setupChat();
 
+  // Procesa el enlace mágico (guarda el token) ANTES de decidir si hay sesión.
+  const authError = consumeAuthHash();
+
   if (loggedIn()) {
     try {
       await loadFromServer();
@@ -733,6 +743,7 @@ async function init() {
   }
   renderAuthState();
   renderStats();
+  if (authError) { switchTab('account'); setAuthFeedback(authError, 'warn'); }
   setupServiceWorker();
 }
 

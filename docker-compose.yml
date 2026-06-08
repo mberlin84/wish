@@ -24,9 +24,15 @@ services:
     environment:
       DATABASE_URL: postgres://mislaminas:mislaminas@db:5432/mislaminas
       DATABASE_SSL: "false"
-      JWT_SECRET: cambia-esto-por-una-cadena-larga-y-secreta
+      JWT_SECRET: ${JWT_SECRET:-cambia-esto-por-una-cadena-larga-y-secreta}
       PORT: "3000"
       ALBUM_NAME: Mundial 2026
+      # Magic link (Resend). Pon estos valores en un archivo .env (no se sube a git).
+      # Sin RESEND_API_KEY, el enlace se imprime en los logs (modo desarrollo).
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      MAIL_FROM: ${MAIL_FROM:-Mis Láminas <onboarding@resend.dev>}
+      # Base pública para los enlaces (vacío = se deduce del request, ej. localhost).
+      APP_URL: ${APP_URL:-}
     ports:
       # Cambia el puerto del host con: HOST_PORT=8080 docker compose up
       - "${HOST_PORT:-3000}:3000"

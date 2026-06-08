@@ -53,3 +53,15 @@ WHERE NOT EXISTS (SELECT 1 FROM album_sections);
 INSERT INTO album_sections (name, prefix, from_n, to_n, sort_order)
 SELECT 'Especiales', 'E', 1, 30, 2
 WHERE NOT EXISTS (SELECT 1 FROM album_sections WHERE prefix = 'E');
+
+-- Login por enlace mágico (magic link): tokens de un solo uso con vencimiento.
+CREATE TABLE IF NOT EXISTS login_tokens (
+  token      TEXT PRIMARY KEY,
+  email      TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at    TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_login_tokens_email ON login_tokens (email);
+
+-- Ya no se usa contraseña (login por magic link): password_hash deja de ser obligatorio.
+ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;

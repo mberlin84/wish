@@ -49,8 +49,7 @@ async function req(path, opts = {}) {
 }
 
 export const api = {
-  register: (body) => req('/auth/register', { method: 'POST', body }),
-  login: (body) => req('/auth/login', { method: 'POST', body }),
+  requestMagicLink: (email) => req('/auth/magic/request', { method: 'POST', body: { email } }),
   me: () => req('/me'),
   setLocation: (body) => req('/me/location', { method: 'PUT', body }),
   getAlbum: () => req('/album'),

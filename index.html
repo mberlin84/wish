@@ -145,29 +145,13 @@
       <!-- Sin sesión -->
       <div id="authSection">
         <div class="card">
-          <div class="seg">
-            <button class="seg-btn active" data-auth="login">Iniciar sesión</button>
-            <button class="seg-btn" data-auth="register">Crear cuenta</button>
-          </div>
-
-          <form id="loginForm" class="auth-form">
-            <label for="loginEmail">Email</label>
-            <input type="email" id="loginEmail" autocomplete="email" required />
-            <label for="loginPassword">Contraseña</label>
-            <input type="password" id="loginPassword" autocomplete="current-password" required />
-            <button type="submit" class="btn btn-primary">Entrar</button>
+          <h2>Entrar</h2>
+          <p class="hint" style="margin: 2px 0 14px">Sin contraseñas. Escribe tu correo y te mandamos un enlace mágico para entrar. Si es tu primera vez, te crea la cuenta automáticamente.</p>
+          <form id="magicForm" class="auth-form">
+            <label for="magicEmail">Correo</label>
+            <input type="email" id="magicEmail" autocomplete="email" inputmode="email" required placeholder="tu@correo.com" />
+            <button type="submit" class="btn btn-primary" id="magicBtn">Enviar enlace mágico</button>
           </form>
-
-          <form id="registerForm" class="auth-form" hidden>
-            <label for="regUsername">Nombre de usuario</label>
-            <input type="text" id="regUsername" autocomplete="nickname" required />
-            <label for="regEmail">Email</label>
-            <input type="email" id="regEmail" autocomplete="email" required />
-            <label for="regPassword">Contraseña (mín. 6)</label>
-            <input type="password" id="regPassword" autocomplete="new-password" required />
-            <button type="submit" class="btn btn-primary">Crear cuenta</button>
-          </form>
-
           <p class="auth-feedback" id="authFeedback"></p>
         </div>
 
