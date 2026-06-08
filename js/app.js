@@ -118,6 +118,17 @@ function setupScan() {
     btn.addEventListener('click', () => { scanMode = btn.dataset.mode; applyScanMode(); });
   });
 
+  // Toque-para-enfocar: reenfoca donde tocaste (donde está el código).
+  const wrap = document.querySelector('#tab-scan .camera-wrap');
+  if (wrap) wrap.addEventListener('click', async (e) => {
+    if (!camera.isActive()) return;
+    const r = wrap.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width;
+    const y = (e.clientY - r.top) / r.height;
+    const ok = await camera.focusAt(x, y);
+    if (ok) flashFocus(wrap, e.clientX - r.left, e.clientY - r.top);
+  });
+
   $('manualAddBtn').addEventListener('click', async () => {
     const result = await addSticker($('manualInput').value);
     showScanToast(result);
@@ -136,6 +147,7 @@ async function startScanning() {
     showCameraControls(true);
     scanActive = true;
     applyScanMode();
+    camera.focusAt(0.5, 0.5); // sesga el foco al centro del recuadro (best-effort)
     scanLoop();
   } catch (e) {
     setScanLive('No se pudo abrir la cámara: ' + e.message);
@@ -259,6 +271,16 @@ function setScanLive(msg) {
   const el = $('scanLive');
   el.hidden = !msg;
   el.textContent = msg;
+}
+
+// Anillo breve donde se tocó para enfocar.
+function flashFocus(wrap, x, y) {
+  const ring = document.createElement('div');
+  ring.className = 'focus-ring';
+  ring.style.left = `${x}px`;
+  ring.style.top = `${y}px`;
+  wrap.appendChild(ring);
+  setTimeout(() => ring.remove(), 700);
 }
 
 const SCAN_HINTS = {

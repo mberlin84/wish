@@ -16,7 +16,12 @@ export async function start(videoEl, { zoom = true } = {}) {
     throw new Error('Este navegador no permite acceder a la cámara.');
   }
   stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+    video: {
+      facingMode: { ideal: 'environment' },
+      width: { ideal: 1920 }, height: { ideal: 1080 },
+      // Pedido de enfoque continuo desde el arranque (best-effort).
+      advanced: [{ focusMode: 'continuous' }],
+    },
     audio: false,
   });
   videoEl.srcObject = stream;
@@ -42,6 +47,28 @@ async function tuneTrack(zoom = true) {
     if (z > (caps.zoom.min || 1)) advanced.push({ zoom: z });
   }
   if (advanced.length) { try { await track.applyConstraints({ advanced }); } catch { /* ignorar */ } }
+}
+
+// Reenfoca (toque-para-enfocar). x,y en fracciones 0..1 del video visible.
+// Devuelve true si el dispositivo aceptó el control de foco (Android/Chrome);
+// en iOS/Safari suele no exponerse y enfoca solo a nivel del sistema.
+export async function focusAt(xFrac = 0.5, yFrac = 0.5) {
+  const track = stream && stream.getVideoTracks && stream.getVideoTracks()[0];
+  if (!track || !track.getCapabilities) return false;
+  let caps = {};
+  try { caps = track.getCapabilities() || {}; } catch { return false; }
+  if (!Array.isArray(caps.focusMode) || !caps.focusMode.length) return false;
+  const mode = caps.focusMode.includes('continuous') ? 'continuous'
+    : caps.focusMode.includes('single-shot') ? 'single-shot'
+    : caps.focusMode[0];
+  // Primero intentamos con punto de interés; si no, solo el modo de enfoque.
+  const tries = [];
+  if (caps.pointsOfInterest) tries.push({ focusMode: mode, pointsOfInterest: [{ x: xFrac, y: yFrac }] });
+  tries.push({ focusMode: mode });
+  for (const c of tries) {
+    try { await track.applyConstraints({ advanced: [c] }); return true; } catch { /* siguiente */ }
+  }
+  return false;
 }
 
 // Mapea un recuadro (fracciones del <video> visible) a píxeles del frame crudo,
